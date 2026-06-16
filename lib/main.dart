@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedSubjectCode = 1;
   String? excelFilePath;
   bool isScanningStarted = false;
-  bool isFlashOn = false; // متغير محلي للتحكم بالفلاش لتفادي أخطاء المكتبة
+  bool isFlashOn = false;
 
   final MobileScannerController cameraController = MobileScannerController();
   final Set<String> _scannedRecords = {};
