@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:excel/excel.dart';
+// تم إيقاف استيراد أدوات الرسم من الإكسيل لمنع التعارض مع فلاتر
+import 'package:excel/excel.dart' hide Border, TextStyle; 
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
