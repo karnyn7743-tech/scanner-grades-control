@@ -332,8 +332,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: ValueListenableBuilder<TorchState>(
                                   valueListenable: cameraController.torchState,
                                   builder: (context, state, child) {
-                                    // تم إصلاح دالة التحقق والفحص هنا لضمان عدم إرجاع قيمة فارغة
-                                    final isTorchOn = state == TorchState.on;
+                                    // تم استخدام فحص منطقي مباشر لتجنب تعارض خصائص الإصدارات المختلفة
+                                    final bool isTorchOn = state == TorchState.on;
                                     return IconButton(
                                       icon: Icon(
                                         isTorchOn ? Icons.flash_on : Icons.flash_off,
