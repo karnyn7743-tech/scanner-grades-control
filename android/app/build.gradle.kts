@@ -5,10 +5,8 @@ plugins {
 }
 
 android {
-    // تحديد رقم إصدار الأندرويد كـ رقم مجرد وليس نص
-    compileSdk = 36
-
     namespace = "com.example.school_grading_app"
+    compileSdk = 35
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -16,30 +14,23 @@ android {
     }
 
     kotlinOptions {
-        // الصيغة الصحيحة والمتوافقة لتحديد jvmTarget بدون أخطاء
         jvmTarget = "17"
     }
 
     defaultConfig {
-        // معرف التطبيق الخاص بك
         applicationId = "com.example.school_grading_app"
-        
-        // الحد الأدنى لدعم الهواتف (رقم مجرد)
         minSdk = 21
-        
-        // الإصدار المستهدف (رقم مجرد ومتوافق مع الكاميرا)
-        targetSdk = 36
-        
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // إعدادات التوقيع الافتراضية للبناء التجريبي والمستقر
+            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
             
-            // تفعيل التحسين لحل مشاكل المكتبات الخارجية مثل ML Kit
+            // إعدادات الـ Minify والـ R8 لضمان عدم حدوث أخطاء أثناء الحزم
             isMinifyEnabled = false
             isShrinkResources = false
         }
