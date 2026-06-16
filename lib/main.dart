@@ -53,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedSubjectCode = 1;
   String? excelFilePath;
   bool isScanningStarted = false;
+  bool isFlashOn = false; // متغير محلي للتحكم بالفلاش لتفادي أخطاء المكتبة
 
   final MobileScannerController cameraController = MobileScannerController();
   final Set<String> _scannedRecords = {};
@@ -329,18 +330,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               left: 10,
                               child: CircleAvatar(
                                 backgroundColor: Colors.black54,
-                                child: ValueListenableBuilder<TorchState>(
-                                  valueListenable: cameraController.torchState,
-                                  builder: (context, state, child) {
-                                    // تم استخدام فحص منطقي مباشر لتجنب تعارض خصائص الإصدارات المختلفة
-                                    final bool isTorchOn = state == TorchState.on;
-                                    return IconButton(
-                                      icon: Icon(
-                                        isTorchOn ? Icons.flash_on : Icons.flash_off,
-                                        color: isTorchOn ? Colors.amber : Colors.white,
-                                      ),
-                                      onPressed: () => cameraController.toggleTorch(),
-                                    );
+                                child: IconButton(
+                                  icon: Icon(
+                                    isFlashOn ? Icons.flash_on : Icons.flash_off,
+                                    color: isFlashOn ? Colors.amber : Colors.white,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      isFlashOn = !isFlashOn;
+                                    });
+                                    cameraController.toggleTorch();
                                   },
                                 ),
                               ),
