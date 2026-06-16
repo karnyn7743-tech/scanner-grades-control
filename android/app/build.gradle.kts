@@ -27,10 +27,7 @@ android {
 
     buildTypes {
         release {
-            // استخدام مفاتيح تصحيح الأخطاء مؤقتاً لتسهيل البناء السريع
             signingConfig = signingConfigs.getByName("debug")
-            
-            // حظر معالج R8 من إتلاف أو تشفير ملفات مكتبة الكاميرا والإكسيل
             isMinifyEnabled = false
             isShrinkResources = false
         }
