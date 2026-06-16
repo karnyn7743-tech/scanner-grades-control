@@ -329,19 +329,19 @@ class _HomeScreenState extends State<HomeScreen> {
                               left: 10,
                               child: CircleAvatar(
                                 backgroundColor: Colors.black54,
-                                child: IconButton(
-                                  icon: ValueListenableBuilder<TorchState>(
-                                    valueListenable: cameraController.torchState,
-                                    builder: (context, state, child) {
-                                      // تم معالجة الـ إرجاع هنا بشكل صارم ومضمون لمنع الـ Null
-                                      if (state == TorchState.on) {
-                                        return const Icon(Icons.flash_on, color: Colors.amber);
-                                      } else {
-                                        return const Icon(Icons.flash_off, color: Colors.white);
-                                      }
-                                    },
-                                  ),
-                                  onPressed: () => cameraController.toggleTorch(),
+                                child: ValueListenableBuilder<TorchState>(
+                                  valueListenable: cameraController.torchState,
+                                  builder: (context, state, child) {
+                                    // تم إصلاح دالة التحقق والفحص هنا لضمان عدم إرجاع قيمة فارغة
+                                    final isTorchOn = state == TorchState.on;
+                                    return IconButton(
+                                      icon: Icon(
+                                        isTorchOn ? Icons.flash_on : Icons.flash_off,
+                                        color: isTorchOn ? Colors.amber : Colors.white,
+                                      ),
+                                      onPressed: () => cameraController.toggleTorch(),
+                                    );
+                                  },
                                 ),
                               ),
                             ),
