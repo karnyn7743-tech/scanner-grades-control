@@ -330,14 +330,14 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: CircleAvatar(
                                 backgroundColor: Colors.black54,
                                 child: IconButton(
-                                  icon: ValueListenableBuilder(
+                                  icon: ValueListenableBuilder<TorchState>(
                                     valueListenable: cameraController.torchState,
                                     builder: (context, state, child) {
-                                      switch (state) {
-                                        case TorchState.off:
-                                          return const Icon(Icons.flash_off, color: Colors.white);
-                                        case TorchState.on:
-                                          return const Icon(Icons.flash_on, color: Colors.amber);
+                                      // تم معالجة الـ إرجاع هنا بشكل صارم ومضمون لمنع الـ Null
+                                      if (state == TorchState.on) {
+                                        return const Icon(Icons.flash_on, color: Colors.amber);
+                                      } else {
+                                        return const Icon(Icons.flash_off, color: Colors.white);
                                       }
                                     },
                                   ),
