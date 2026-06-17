@@ -87,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // [المرحلة 1]: قراءة كود الـ QR والتحقق من ملف الكنترول
+  // [المرحلة 1]: قراءة كود الـ QR ومطابقة الطالب بالملف
   void processScannedQR(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null || isScanningGrade) return;
 
@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showConfirmationDialog();
   }
 
-  // الواجهة الجمالية المنظمة والمطورة لشاشة التأكيد البينية (الـ Dialog الراقية)
+  // شاشة التأكيد البينية (الـ Dialog الراقية بنظام المراحل المتتالية)
   void showConfirmationDialog() {
     showDialog(
       context: context,
@@ -135,7 +135,6 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
             return Directionality(
               textDirection: TextDirection.rtl,
               child: AlertDialog(
@@ -198,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: MobileScanner(
                             controller: cameraController,
                             onDetect: (capture) {
-                              // مسح الدرجة مستقبلي أو كتابتها مباشرة لتسهيل الرصد
+                              // مسح الدرجة تلقائياً مستقبلاً
                             },
                           ),
                         ),
@@ -302,12 +301,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (fileBytes != null) {
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         
-        // إصلاح الميثود المحدث ليتوافق مع مكتبة الحفظ بدون أخطاء تجميعية
+        // التعديل المصلح والنهائي للتوافق الكامل مع إصدار مكتبة file_saver المحدثة والمثبتة
         await FileSaver.instance.saveFile(
-          "كنترول_${selectedSubject}_تحديث_$timestamp.xlsx",
-          Uint8List.fromList(fileBytes),
-          "",
-          mimeType: MimeType.MICROSOFT_EXCEL
+          name: "كنترول_${selectedSubject}_تحديث_$timestamp",
+          bytes: Uint8List.fromList(fileBytes),
+          ext: "xlsx",
+          mimeType: MimeType.microsoftExcel,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
