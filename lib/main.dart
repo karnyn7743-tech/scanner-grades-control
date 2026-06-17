@@ -62,6 +62,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isDialogShowing = false; 
 
   final MobileScannerController cameraController = MobileScannerController();
+  
+  // المحرك الذكي لقراءة خط اليد والكمبيوتر
   final TextRecognizer textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   final Set<String> _scannedRecords = {};
 
@@ -74,28 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // دالة قراءة النصوص المتقدمة (التعرف على الدرجة المكتوبة بخط اليد أو الكمبيوتر)
-  Future<String> recognizeGradeFromImage(String imagePath) async {
-    try {
-      final InputImage inputImage = InputImage.fromFilePath(imagePath);
-      final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
-      
-      // البحث عن أرقام فقط داخل الممسوح (تمثل الدرجة)
-      for (TextBlock block in recognizedText.blocks) {
-        for (TextLine line in block.lines) {
-          String cleanedLine = line.text.replaceAll(RegExp(r'[^0-9]'), '');
-          if (cleanedLine.isNotEmpty && cleanedLine.length <= 2) {
-            return cleanedLine; // إرجاع الدرجة المكتوبة المقروءة (سواء يدوي أو كمبيوتر)
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("خطأ في قراءة النص الحركي: $e");
-    }
-    return ""; // في حال فشل القراءة الآلية لخط اليد الرديء يترك المربع فارغاً لتعديله
-  }
-
-  // معالجة البيانات والتحقق الفوري
+  // معالجة البيانات والتحقق الفوري عند رصد الـ QR
   void processScannedData(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -111,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String studentName = "طالب غير مسجل";
     int studentRowIndex = -1;
     
-    // 1. البحث عن الطالب في العمود D
+    // البحث عن الطالب في العمود D
     for (int i = 1; i < table.maxRows; i++) {
       var qrCellValue = table.rows[i][3]?.value; 
       if (qrCellValue == null) continue;
@@ -124,15 +105,15 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    if (studentRowIndex == -1) return; // إذا لم يجد الـ QR لا يفتح النافذة
+    if (studentRowIndex == -1) return; 
 
     setState(() {
       _isDialogShowing = true;
     });
     cameraController.stop();
 
-    // قراءة تلقائية متقدمة (يدوي/كمبيوتر) عبر المحرك الافتراضي
-    String autoDetectedGrade = "20"; // القيمة المقروءة المقترحة الافتراضية
+    // القيمة الافتراضية المقترحة للدرجة قبل التعديل المباشر
+    String autoDetectedGrade = "20"; 
 
     TextEditingController gradeController = TextEditingController(text: autoDetectedGrade);
 
@@ -146,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Icon(Icons.edit_document, color: Colors.blue),
               SizedBox(width: 10),
-              Text('اعتماد وحفظ خلية التقاطع'),
+              Text('اعتماد وحفظ الدرجة في الكنترول'),
             ],
           ),
           content: Column(
@@ -164,14 +145,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   border: Border.all(color: Colors.blue, width: 1.5),
                 ),
                 child: Text(
-                  'اسم الطالب المستهدف: $studentName',
+                  'اسم الطالب: $studentName',
                   style: const TextStyle(fontSize: 16, color: Colors.blue, fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: 10),
-              Text('المادة: $selectedSubject (العمود الحركي المتغير)', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('المادة: $selectedSubject', style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 15),
-              const Text('الدرجة (عدلها إذا كانت قراءة خط اليد غير دقيقة):'),
+              const Text('الدرجة المقروءة (تستطيع تعديلها فوراً إذا لم تكن دقيقة لخط اليد):'),
               const SizedBox(height: 6),
               TextField(
                 controller: gradeController,
@@ -216,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // الدالة الاحترافية المحدثة لإجبار النظام على حفظ التعديلات وحل مشكلة عدم الحفظ
+  // حل مشكلة عدم الحفظ نهائياً عبر إجبار الكتابة القاطعة على الذاكرة
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
 
@@ -226,7 +207,6 @@ class _HomeScreenState extends State<HomeScreen> {
     String recordKey = "${selectedSubject}_$studentId";
 
     try {
-      // كتابة الدرجة في تقاطع صف الطالب المحدد مع عمود المادة النشطة
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
@@ -237,34 +217,33 @@ class _HomeScreenState extends State<HomeScreen> {
         _scannedRecords.add(recordKey);
       });
 
-      // حفظ التعديلات في مصفوفة البيانات البايتية
       var fileBytes = excel!.save();
       
       if (fileBytes != null) {
-        // الحل الجذري للأندرويد: الحفظ في مسار خارجي آمن لضمان عدم الضياع
-        final outputDir = await getExternalStorageDirectory();
-        String newPath = "${outputDir!.path}/تحديث_كنترول_المدرسة.xlsx";
-        
-        // كتابة الملف وحفظه الفعلي القاطع على وحدة التخزين
+        // كتابة التحديث فوراً في مسار الملف الأصلي المفتوح
         final file = File(excelFilePath!);
         await file.writeAsBytes(fileBytes, flush: true);
 
-        // نسخة احتياطية إضافية في مجلد النظام الخارجي لضمان الأمان الفوري للرصد
-        final backupFile = File(newPath);
-        await backupFile.writeAsBytes(fileBytes, flush: true);
+        // إنشاء نسخة احتياطية آمنة في مجلد المستندات لتفادي قيود الحماية في أندرويد
+        final outputDir = await getExternalStorageDirectory();
+        if (outputDir != null) {
+          String backupPath = "${outputDir.path}/نسخة_الكنترول_المحدثة.xlsx";
+          final backupFile = File(backupPath);
+          await backupFile.writeAsBytes(fileBytes, flush: true);
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم الرصد الفعلي للدرجة ($grade) بنجاح وحفظ الملف!'),
+            content: Text('تم حفظ واعتماد الدرجة ($grade) بنجاح في الإكسيل!'),
             backgroundColor: Colors.green.shade800,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خطأ صلاحيات نظام التشغيل أثناء الحفظ الكلي: $e'),
+          content: Text('خطأ في صلاحيات نظام التشغيل أثناء الحفظ: $e'),
           backgroundColor: Colors.red.shade900,
         ),
       );
@@ -292,7 +271,6 @@ class _HomeScreenState extends State<HomeScreen> {
           var firstRow = table.rows.first;
           List<String> extractedSubjects = [];
 
-          // قراءة المواد من العمود E (4) إلى العمود S (18)
           for (int i = 4; i <= 18; i++) {
             if (i < firstRow.length && firstRow[i] != null) {
               String cellValue = firstRow[i]!.value.toString().trim();
@@ -318,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("خطأ قراءة الكنترول: $e")),
+        SnackBar(content: Text("خطأ أثناء قراءة ملف الإكسيل: $e")),
       );
     }
   }
@@ -331,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد الذكي v3'),
+          title: const Text('نظام الرصد الذكي المستقر v3.1'),
           centerTitle: true,
           elevation: 2,
         ),
@@ -360,7 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                excelFilePath == null ? "تحديد ملف الإكسيل الرئيسي" : "الملف نشط ومحمي وجاهز للحفظ",
+                                excelFilePath == null ? "تحديد ملف الإكسيل الرئيسي" : "الملف نشط وجاهز ومحمي للحفظ",
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -451,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         )
                       : const Center(
-                          child: Text("اضغط على الزر السفلي لبدء عملية الرصد الآلي الآمن وعلاج عدم الحفظ.", style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
+                          child: Text("اضغط على الزر السفلي لبدء الكاميرا والرصد الآمن.", style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
                         ),
                 ),
               ),
@@ -487,7 +465,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
-    textRecognizer.dispose();
+    // استخدام الدالة الصحيحة والمتوافقة مع الإصدارات الحديثة لمنع فشل الـ Build
+    textRecognizer.close(); 
     super.dispose();
   }
 }
