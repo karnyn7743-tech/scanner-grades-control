@@ -51,12 +51,13 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> subjects = [];
   String? selectedSubject;
   int selectedSubjectCode = 1;
-  int selectedSubjectColumnIndex = 4; // العمود الافتراضي للمادة الأولى
+  int selectedSubjectColumnIndex = 4; 
   String? excelFilePath;
   Excel? excel;
   String? sheetName;
   bool isScanningStarted = false;
   bool isFlashOn = false;
+  bool _isDialogShowing = false; // لمنع تكرار فتح النوافذ لنفس الطالب
 
   final MobileScannerController cameraController = MobileScannerController();
   final Set<String> _scannedRecords = {};
@@ -66,17 +67,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return _scannedRecords.where((key) => key.startsWith("${selectedSubject}_")).length;
   }
 
-  // دالة البحث عن اسم الطالب ورصد درجته داخل ملف الإكسيل
+  // دالة معالجة البيانات والبحث الذكي عن الطالب
   void processScannedData(String scannedData) {
-    if (excel == null || sheetName == null || selectedSubject == null) return;
+    // إذا كانت هناك نافذة مفتوحة بالفعل، تجاهل أي قراءات أخرى للكاميرا
+    if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
-    // افترضنا أن البيانات الممسوحة تحتوي على الرقم والدرجة مفصولين بـ فاصلة أو مسافة، أو الرقم فقط والدرجة افتراضية
-    String studentId = scannedData.trim();
-    String detectedGrade = "25"; // درجة افتراضية في حال لم تكن مدمجة بالباركود
+    // تنظيف البيانات المقروءة من أي مسافات زائدة أو أسطر جديدة
+    String cleanData = scannedData.trim().replaceAll('\n', '').replaceAll('\r', '');
+    if (cleanData.isEmpty) return;
 
-    // إذا كان الباركود يحتوي على الرقم والدرجة معاً (مثال: 2026001,23)
-    if (scannedData.contains(',')) {
-      List<String> parts = scannedData.split(',');
+    String studentId = cleanData;
+    String detectedGrade = ""; // نتركها فارغة ليقوم القائم بالمسح بإدخالها أو تأكيدها
+
+    // إذا كان الباركود يحتوي على الرقم والدرجة معاً مفصولين بفاصلة
+    if (cleanData.contains(',')) {
+      List<String> parts = cleanData.split(',');
       studentId = parts[0].trim();
       detectedGrade = parts[1].trim();
     }
@@ -87,26 +92,28 @@ class _HomeScreenState extends State<HomeScreen> {
     String studentName = "طالب غير مسجل";
     int studentRowIndex = -1;
 
-    // البحث عن الطالب في العمود الأول (رقم القيد/الجلوس) ابتداءً من الصف الثاني
+    // البحث المطوّر: نقارن النصوص بعد تنظيفها تماماً من أي شوائب
     for (int i = 1; i < table.maxRows; i++) {
       var cellValue = table.rows[i][0]?.value?.toString().trim();
-      if (cellValue == studentId) {
+      if (cellValue != null && cellValue == studentId) {
         studentRowIndex = i;
-        // افترضنا أن اسم الطالب موجود في العمود الثاني (الدليل 1)
         studentName = table.rows[i][1]?.value?.toString().trim() ?? "بدون اسم";
         break;
       }
     }
 
-    // إيقاف الكاميرا مؤقتاً لكي لا تكرر القراءة أثناء ظهور النافذة
+    setState(() {
+      _isDialogShowing = true;
+    });
+
+    // إيقاف الكاميرا فوراً لمنع تكرار التقاط الصورة الأولى
     cameraController.stop();
 
-    // إظهار نافذة التأكيد والتعديل للمستخدم
     TextEditingController gradeController = TextEditingController(text: detectedGrade);
 
     showDialog(
       context: context,
-      barrierDismissible: false, // يجب الضغط على الأزرار للتفاعل
+      barrierDismissible: false,
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
@@ -121,21 +128,39 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('رقم الطالب: $studentId', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text('اسم الطالب: $studentName', style: TextStyle(fontSize: 16, color: Colors.blue.shade900, fontWeight: FontWeight.bold)),
+              Text('رقم القيد/الجلوس: $studentId', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                width: double.maxFinite,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: studentRowIndex == -1 ? Colors.red.shade50 : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: studentRowIndex == -1 ? Colors.red.shade200 : Colors.blue.shade200),
+                ),
+                child: Text(
+                  'اسم الطالب: $studentName',
+                  style: TextStyle(
+                    fontSize: 16, 
+                    color: studentRowIndex == -1 ? Colors.red.shade900 : Colors.blue.shade900, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ),
               const SizedBox(height: 6),
-              Text('المادة: $selectedSubject', style: const TextStyle(color: Colors.grey)),
+              Text('المادة المستهدفة: $selectedSubject', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
               const SizedBox(height: 15),
-              const Text('الدرجة الملتقطة (يمكنك التعديل):'),
+              const Text('الدرجة الملتقطة للطالب (يرجى إدخالها أو تأكيدها):'),
               const SizedBox(height: 5),
               TextField(
                 controller: gradeController,
                 keyboardType: TextInputType.number,
                 autofocus: true,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  hintText: 'أدخل الدرجة هنا',
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                 ),
               ),
             ],
@@ -143,22 +168,31 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () {
+                setState(() {
+                  _isDialogShowing = false;
+                });
                 Navigator.pop(context);
-                // إعادة تشغيل الكاميرا للمسح التالي
-                cameraController.start();
+                cameraController.start(); // إعادة تشغيل الكاميرا للمسح التالي
               },
-              child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
+              child: const Text('إلغاء وفحص جديد', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
               onPressed: () async {
                 String finalGrade = gradeController.text.trim();
                 if (finalGrade.isNotEmpty) {
                   await saveGradeToExcel(studentId, studentRowIndex, finalGrade);
+                  setState(() {
+                    _isDialogShowing = false;
+                  });
                   Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('الرجاء إدخال الدرجة أولاً قبل الحفظ!')),
+                  );
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-              child: const Text('حفظ ورصد'),
+              child: const Text('حفظ ورصد في الإكسيل', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -166,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // دالة الحفظ الفعلي داخل ملف الإكسيل وحفظ الملف في الجهاز
+  // دالة الحفظ المحدثة والمؤمنة بالكامل
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
 
@@ -175,10 +209,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     String recordKey = "${selectedSubject}_$studentId";
 
-    setState(() {
-      // إذا كان الطالب تم العثور عليه في الملف
+    try {
       if (rowIndex != -1) {
-        // تحديث الخلية المحددة للمادة بالدرجة الجديدة
+        // تحديث قيمة الخلية وضمان حفظها كـ نص صريح لتجنب مشاكل الصيغ المفقودة
         var cell = table.cell(CellIndex.indexByColumnRow(
           columnIndex: selectedSubjectColumnIndex,
           rowIndex: rowIndex,
@@ -186,29 +219,35 @@ class _HomeScreenState extends State<HomeScreen> {
         cell.value = TextCellValue(grade);
       }
 
-      _scannedRecords.add(recordKey);
-    });
+      setState(() {
+        _scannedRecords.add(recordKey);
+      });
 
-    try {
-      // حفظ التغييرات كتابةً فوق الملف الأصلي المختار
+      // حفظ التغييرات وإعادة الكتابة على الملف بصيغة البايتات الكاملة
       var fileBytes = excel!.save();
       if (fileBytes != null) {
-        File(excelFilePath!)
-          ..createSync(recursive: true)
-          ..writeAsBytesSync(fileBytes);
+        final file = File(excelFilePath!);
+        await file.writeAsBytes(fileBytes, flush: true); // استخدام flush لضمان الكتابة الفورية على القرص
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تم حفظ درجة الطالب بنجاح في ملف الإكسيل!')),
+          SnackBar(
+            content: Text('تم الحفظ الفعلي بنجاح للطالب في: ${excelFilePath!.split(Platform.pathSeparator).last}'),
+            backgroundColor: Colors.green.shade700,
+          ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ أثناء حفظ الملف: $e')),
+        SnackBar(
+          content: Text('تنبيه: تم الرصد مؤقتاً ولكن تعذر تعديل الملف الأصلي (تأكد من إغلاقه في الخلفية). خطأ: $e'),
+          backgroundColor: Colors.amber.shade900,
+          duration: const Duration(seconds: 5),
+        ),
       );
     }
 
-    // إعادة تشغيل الكاميرا تلقائياً بعد الحفظ للمسح التالي
-    cameraController.start();
+    // إعادة تشغيل الكاميرا تلقائياً والتهيؤ للمسح القادم
+    await cameraController.start();
   }
 
   Future<void> pickAndLoadExcel() async {
@@ -230,7 +269,6 @@ class _HomeScreenState extends State<HomeScreen> {
           var firstRow = table.rows.first;
           List<String> extractedSubjects = [];
 
-          // قراءة المواد من العمود 4 إلى 18
           for (int i = 4; i <= 18; i++) {
             if (i < firstRow.length && firstRow[i] != null) {
               String cellValue = firstRow[i]!.value.toString().trim();
@@ -246,10 +284,11 @@ class _HomeScreenState extends State<HomeScreen> {
             if (subjects.isNotEmpty) {
               selectedSubject = subjects.first;
               selectedSubjectCode = 1;
-              selectedSubjectColumnIndex = 4; // تبدأ من العمود الرابع
+              selectedSubjectColumnIndex = 4;
             }
             isScanningStarted = false;
             _scannedRecords.clear();
+            _isDialogShowing = false;
           });
         }
       }
@@ -279,7 +318,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   isDark ? ThemeMode.light : ThemeMode.dark,
                 );
               },
-              tooltip: isDark ? "تفعيل الوضع العادي" : "تفعيل الوضع الليلي",
             ),
           ],
         ),
@@ -338,17 +376,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Text(
                           "الطلاب المرصودين",
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white70 : Colors.purple.shade900),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.purple.shade900),
                         ),
                         Text(
                           "$currentSubjectCount",
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.amber : Colors.purple.shade700),
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.amber : Colors.purple.shade700),
                         ),
                       ],
                     ),
@@ -387,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     selectedSubject = newValue;
                                     int index = subjects.indexOf(newValue!);
                                     selectedSubjectCode = index + 1;
-                                    selectedSubjectColumnIndex = 4 + index; // تحديد العمود بدقة للإكسيل
+                                    selectedSubjectColumnIndex = 4 + index; 
                                   });
                                 },
                               ),
@@ -402,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            "كود المادة: $selectedSubjectCode",
+                            "كود: $selectedSubjectCode",
                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
                           ),
                         ),
@@ -429,8 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               onDetect: (capture) {
                                 final List<Barcode> barcodes = capture.barcodes;
                                 if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
-                                  String scannedData = barcodes.first.rawValue!;
-                                  processScannedData(scannedData);
+                                  processScannedData(barcodes.first.rawValue!);
                                 }
                               },
                             ),
@@ -450,10 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: CircleAvatar(
                                 backgroundColor: Colors.black54,
                                 child: IconButton(
-                                  icon: Icon(
-                                    isFlashOn ? Icons.flash_on : Icons.flash_off,
-                                    color: isFlashOn ? Colors.amber : Colors.white,
-                                  ),
+                                  icon: Icon(isFlashOn ? Icons.flash_on : Icons.flash_off, color: isFlashOn ? Colors.amber : Colors.white),
                                   onPressed: () {
                                     setState(() {
                                       isFlashOn = !isFlashOn;
@@ -487,14 +515,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     ? () {
                         setState(() {
                           isScanningStarted = true;
+                          _isDialogShowing = false;
                         });
+                        cameraController.start();
                       }
                     : null,
                 icon: const Icon(Icons.qr_code_scanner, size: 24),
-                label: const Text(
-                  "بدء المسح الذكي",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                label: const Text("بدء المسح الذكي", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue.shade700,
                   foregroundColor: Colors.white,
