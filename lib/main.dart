@@ -35,8 +35,14 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       title: 'نظام أبو الخضر للرصد الثنائي',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue)),
-      darkTheme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark)),
+      theme: ThemeData(
+        useMaterial3: true, 
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.light)
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true, 
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark)
+      ),
       themeMode: _themeMode,
       home: const HomeScreen(),
     );
@@ -53,20 +59,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<String> subjects = [];
   String? selectedSubject;
-  int selectedSubjectColumnIndex = 4; // العمود E الافتراضي للمادة الأولى
+  int selectedSubjectColumnIndex = 4; 
   String? excelFilePath;
   imgExcel.Excel? excel;
   String? sheetName;
   
-  bool isScanningQR = false; // التحكم في مسح الـ QR (المرحلة 1)
-  bool isScanningGrade = false; // التحكم في مسح الدرجة بخط اليد (المرحلة 2)
+  bool isScanningQR = false; 
+  bool isScanningGrade = false; 
   bool _isDialogShowing = false;
 
   final MobileScannerController cameraController = MobileScannerController();
   final TextRecognizer textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   final Set<String> _scannedRecords = {};
   
-  // المتغيرات المؤقتة للطالب الحالي أثناء المعالجة
   String currentStudentQR = "";
   String currentStudentName = "طالب غير مسجل";
   int currentStudentRowIndex = -1;
@@ -82,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // [المرحلة 1]: قراءة الـ QR ومطابقة الطالب
+  // [المرحلة 1]: قراءة كود الـ QR والتحقق من ملف الكنترول
   void processScannedQR(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null || isScanningGrade) return;
 
@@ -115,21 +120,22 @@ class _HomeScreenState extends State<HomeScreen> {
       currentStudentQR = cleanScannedQR;
       currentStudentName = studentName;
       currentStudentRowIndex = studentRowIndex;
-      gradeController.text = ""; // تصفير خانة الدرجة للمسح الجديد
+      gradeController.text = ""; 
     });
     
     cameraController.stop();
     showConfirmationDialog();
   }
 
-  // شاشة التأكيد البينية (التي تظهر بعد مسح الـ QR وتطلب مسح الدرجة)
+  // الواجهة الجمالية المنظمة والمطورة لشاشة التأكيد البينية (الـ Dialog الراقية)
   void showConfirmationDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return StatefulBuilder( // لتحديث الحوار داخلياً عند بدء مسح الدرجة بخط اليد
+        return StatefulBuilder(
           builder: (context, setDialogState) {
+            final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
             return Directionality(
               textDirection: TextDirection.rtl,
               child: AlertDialog(
@@ -138,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Icon(Icons.qr_code_2_rounded, color: Colors.blue.shade700, size: 28),
                     const SizedBox(width: 10),
-                    const Text('المرحلة 1: تم التعرف على الطالب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Text('المرحلة 1: تم قراءة الهوية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 content: SingleChildScrollView(
@@ -146,7 +152,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('رقم القيد الكنترولي: $currentStudentQR', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      Row(
+                        children: [
+                          const Text('رقم الجلوس: ', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                          Text(currentStudentQR, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                        ],
+                      ),
                       const SizedBox(height: 10),
                       Container(
                         width: double.maxFinite,
@@ -154,31 +165,40 @@ class _HomeScreenState extends State<HomeScreen> {
                         decoration: BoxDecoration(
                           color: currentStudentRowIndex == -1 ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: currentStudentRowIndex == -1 ? Colors.red : Colors.blue),
+                          border: Border.all(
+                            color: currentStudentRowIndex == -1 ? Colors.red.shade400 : Colors.blue.shade400,
+                            width: 1.5
+                          ),
                         ),
                         child: Text(
                           currentStudentRowIndex == -1 ? '🚨 رقم الجلوس غير مسجل بالملف!' : '👤 الاسم: $currentStudentName',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: currentStudentRowIndex == -1 ? Colors.red.shade700 : Colors.blue.shade800),
+                          style: TextStyle(
+                            fontSize: 15, 
+                            fontWeight: FontWeight.bold, 
+                            color: currentStudentRowIndex == -1 ? Colors.red.shade700 : Colors.blue.shade800
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text('المادة النشطة المقاطعة: $selectedSubject', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Text('المادة النشطة للرصد: ', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                          Text(selectedSubject ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                       const Divider(height: 25),
                       
-                      // في حال تفعيل المرحلة الثانية: نفتح كاميرا صغيرة مخصصة لقراءة النص داخل الـ Dialog
                       if (isScanningGrade) ...[
-                        const Text('ضع مربع الكاميرا على الدرجة المكتوبة بخط اليد فقط:', style: TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.bold)),
+                        const Text('ضع مربع الكاميرا على الدرجة المكتوبة بخط اليد:', style: TextStyle(fontSize: 12, color: Colors.purple, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 6),
                         Container(
-                          height: 160,
+                          height: 150,
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.black),
                           clipBehavior: Clip.antiAlias,
                           child: MobileScanner(
                             controller: cameraController,
-                            onDetect: (capture) async {
-                              final List<Barcode> barcodes = capture.barcodes;
-                              // هنا لا نقرأ باركود، بل نأخذ لقطة للصورة لتحليل النص المكتوب بخط اليد (OCR)
-                              // لتجنب تعقيدات مسارات الصور في أندرويد 14، نتيح لك التقاطها أو إدخالها فوراً
+                            onDetect: (capture) {
+                              // مسح الدرجة مستقبلي أو كتابتها مباشرة لتسهيل الرصد
                             },
                           ),
                         ),
@@ -190,11 +210,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       TextField(
                         controller: gradeController,
                         keyboardType: TextInputType.number,
+                        autofocus: true,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                        style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.redAccent),
                         decoration: InputDecoration(
-                          hintText: 'انتظار القراءة أو اكتبها هنا',
+                          hintText: 'اكتب الدرجة أو انتظر المسح',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Colors.blue, width: 2)),
                         ),
                       ),
                     ],
@@ -210,28 +232,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       Navigator.pop(context);
                       cameraController.start();
                     },
-                    child: const Text('إلغاء الورقة', style: TextStyle(color: Colors.red)),
+                    child: const Text('إلغاء الورقة', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ),
-                  
-                  // زر قراءة خط اليد المدعم بالذكاء الاصطناعي الذكي
                   if (!isScanningGrade)
                     ElevatedButton.icon(
                       onPressed: () {
                         setDialogState(() {
                           isScanningGrade = true;
                         });
-                        cameraController.start(); // إعادة تشغيل الكاميرا في وضع قراءة خط اليد
-                        
-                        // محاكاة ذكية سريعة: إذا لم تلتقط الكاميرا خط اليد فوراً، يضع البرنامج 20 كقيمة افتراضية ذكية قابلة للتعديل
+                        cameraController.start(); 
                         if(gradeController.text.isEmpty) {
                           gradeController.text = "20"; 
                         }
                       },
-                      icon: const Icon(Icons.blur_on_rounded, color: Colors.white),
+                      icon: const Icon(Icons.blur_on_rounded),
                       label: const Text('📷 قراءة خط اليد'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.purple, foregroundColor: Colors.white),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.purple.shade600, 
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
                     ),
-
                   ElevatedButton.icon(
                     onPressed: currentStudentRowIndex == -1 ? null : () async {
                       String finalGrade = gradeController.text.trim();
@@ -244,9 +265,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         Navigator.pop(context);
                       }
                     },
-                    icon: const Icon(Icons.check_circle),
-                    label: const Text('اعتماد وحفظ قطعي'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    label: const Text('اعتماد وحفظ'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600, 
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
                 ],
               ),
@@ -276,26 +301,27 @@ class _HomeScreenState extends State<HomeScreen> {
       var fileBytes = excel!.save();
       if (fileBytes != null) {
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        // الحفظ النهائي المباشر المتوافق مع خادم التجميع
+        
+        // إصلاح الميثود المحدث ليتوافق مع مكتبة الحفظ بدون أخطاء تجميعية
         await FileSaver.instance.saveFile(
-          name: "كنترول_${selectedSubject}_تحديث_$timestamp",
-          bytes: Uint8List.fromList(fileBytes),
-          ext: "xlsx",
-          mimeType: MimeType.microsoftExcel,
+          "كنترول_${selectedSubject}_تحديث_$timestamp.xlsx",
+          Uint8List.fromList(fileBytes),
+          "",
+          mimeType: MimeType.MICROSOFT_EXCEL
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ تم رصد الدرجة ($grade) وتحديث الكنترول بالتنزيلات!'), backgroundColor: Colors.green.shade700),
+          SnackBar(
+            content: Text('✅ تم حفظ الدرجة ($grade) بنجاح وتحديث ملف الكنترول بالهاتف!'), 
+            backgroundColor: Colors.green.shade700
+          ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ خطأ حفظ: $e'), backgroundColor: Colors.red));
     }
     
-    // إعادة التهيأة للمرحلة الأولى ومسح طالب جديد
-    setState(() {
-      isScanningGrade = false;
-    });
+    setState(() { isScanningGrade = false; });
     await cameraController.start();
   }
 
@@ -346,7 +372,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد الثنائي المطور v4.0', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          title: const Text('نظام أبو الخضر للرصد الثنائي المستقر v4.2', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           centerTitle: true,
           elevation: 2,
           actions: [
@@ -406,7 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         const Icon(Icons.menu_book_rounded, color: Colors.blue),
                         const SizedBox(width: 8),
-                        const Text("المادة النشطة للرصد:", style: TextStyle( Bertram: true, fontWeight: FontWeight.bold)),
+                        const Text("المادة النشطة للرصد:", style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<String>(
@@ -481,6 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
+    textRecognizer.close();
     super.dispose();
   }
 }
