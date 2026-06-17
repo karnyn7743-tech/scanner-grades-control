@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart' hide Border, TextStyle;
+import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:excel/excel.dart' hide Border, TextStyle;
+import 'package:excel/excel.dart' as imgExcel; // حل مشكلة التعارض بشكل نهائي وجذري
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedSubjectCode = 1;
   int selectedSubjectColumnIndex = 4; // يبدأ عمود المادة الأولى من E (Index 4)
   String? excelFilePath;
-  Excel? excel;
+  imgExcel.Excel? excel;
   String? sheetName;
   bool isScanningStarted = false;
   bool isFlashOn = false;
@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // معالجة البيانات والتحقق الثلاثي الصارم
+  // معالجة البيانات والتحقق الثلاثي الصارم المتوافق مع الورقة الفيزيائية
   void processScannedData(String scannedData) {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -85,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
     int studentRowIndex = -1;
     String autoDetectedGrade = ""; 
 
-    // محاكاة قراءة الدرجة تلقائياً من المربع الأيسر بالورقة الفيزيائية كما بالترتيب
+    // محاكاة قراءة الدرجة تلقائياً من المربع الأيسر بالورقة الفيزيائية كما بالترتيب المعتمد
     autoDetectedGrade = "20"; 
 
     // 1. البحث عن رمز الاستجابة في العمود D (دليل 3)
@@ -153,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     cameraController.stop();
     
-    // إظهار مربع النص والدرجة مقروءة بداخلة تلقائياً للمراجعة والاعتماد
+    // إظهار مربع النص والدرجة مقروءة بداخله تلقائياً للمراجعة والاعتماد
     TextEditingController gradeController = TextEditingController(text: autoDetectedGrade);
 
     showDialog(
@@ -264,11 +264,11 @@ class _HomeScreenState extends State<HomeScreen> {
     String recordKey = "${selectedSubject}_$studentId";
 
     try {
-      var cell = table.cell(CellIndex.indexByColumnRow(
+      var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
       ));
-      cell.value = TextCellValue(grade);
+      cell.value = imgExcel.TextCellValue(grade);
 
       setState(() {
         _scannedRecords.add(recordKey);
@@ -308,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (result != null && result.files.single.path != null) {
         String path = result.files.single.path!;
         var bytes = File(path).readAsBytesSync();
-        excel = Excel.decodeBytes(bytes);
+        excel = imgExcel.Excel.decodeBytes(bytes);
         sheetName = excel!.tables.keys.first;
 
         var table = excel!.tables[sheetName];
@@ -407,7 +407,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                                 overflow: TextOverflow.ellipsis,
                               ),
-                            ),
+                        ),
                           ],
                         ),
                       ),
