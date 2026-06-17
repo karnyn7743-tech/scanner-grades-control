@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
     torchEnabled: false,
+    returnImage: true, // تفعيل إرجاع الصورة لمعالجتها بواسطة ML Kit
   );
 
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
@@ -127,16 +128,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     String autoDetectedGrade = "0";
-    if (capture.image != null) {
+    // إصلاح جلب الأبعاد من كائن الحجم المرتبط بالتقاط الكاميرا لتفادي خطأ Uint8List
+    if (capture.image != null && capture.size.width > 0 && capture.size.height > 0) {
       try {
-        final Uint8List bytes = capture.image!.bytes;
+        final Uint8List bytes = capture.image!;
         final InputImage inputImage = InputImage.fromBytes(
           bytes: bytes,
           metadata: InputImageMetadata(
-            size: Size(capture.image!.width.toDouble(), capture.image!.height.toDouble()),
+            size: Size(capture.size.width, capture.size.height),
             rotation: InputImageRotation.rotation0,
             format: InputImageFormat.nv21,
-            bytesPerRow: capture.image!.width,
+            bytesPerRow: capture.size.width.toInt(),
           ),
         );
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
@@ -273,22 +275,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
       var fileBytes = excel!.save();
       if (fileBytes != null) {
-        // 1. الحفظ القطعي والمباشر في الملف المختار
+        // 1. التحديث الفوري والمستقر للملف المحدد
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // 2. إصلاح دالة الحفظ الاحتياطي لتتوافق مع إصدار file_saver 0.4.0 الجديد بدون معلمات ملغية
+        // 2. إصلاح استدعاء FileSaver باستخدام المعاملات المسماة المتوافقة مع الإصدار الجديد
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         await FileSaver.instance.saveFile(
-          "تحديث_${selectedSubject}_$timestamp",
-          Uint8List.fromList(fileBytes),
-          "xlsx",
-          mimeType: MimeType.MICROSOFT_EXCEL
+          name: "تحديث_${selectedSubject}_$timestamp",
+          bytes: Uint8List.fromList(fileBytes),
+          ext: "xlsx",
+          mimeType: MimeType.microsoftExcel,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم حفظ الدرجة ($grade) في الملف الأصلي والنسخة الاحتياطية!'),
+            content: Text('✅ تم حفظ الدرجة ($grade) في الملف والنسخة الاحتياطية!'),
             backgroundColor: Colors.green.shade700,
             duration: const Duration(seconds: 2),
           ),
@@ -354,7 +356,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد المستقر v5.4', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          title: const Text('نظام أبو الخضر للرصد المستقر v5.5', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           centerTitle: true,
           elevation: 2,
           actions: [
@@ -456,7 +458,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: excelFilePath != null
                       ? MobileScanner(
                           controller: cameraController, 
-                          onDetect: onCameraDetectHandler
+                          onDetect: onCameraDetectHandler,
                         )
                       : const Center(
                           child: Text(
@@ -497,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
-    _textRecognizer.dispose();
+    _textRecognizer.close(); // التحديث النهائي لإغلاق معالج النصوص بأمان ومنع تسريب الذاكرة
     super.dispose();
   }
 }
