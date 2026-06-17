@@ -301,12 +301,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (fileBytes != null) {
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         
-        // التعديل المصلح والنهائي للتوافق الكامل مع إصدار مكتبة file_saver المحدثة والمثبتة
+        // الصياغة الحديثة الرسمية والمتوافقة مائة بالمائة مع حزمة file_saver: ^0.4.0
         await FileSaver.instance.saveFile(
-          name: "كنترول_${selectedSubject}_تحديث_$timestamp",
+          name: "كنترول_${selectedSubject}_تحديث_$timestamp.xlsx",
           bytes: Uint8List.fromList(fileBytes),
-          ext: "xlsx",
-          mimeType: MimeType.microsoftExcel,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
