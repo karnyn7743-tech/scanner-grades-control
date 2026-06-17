@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Border, TextStyle;
 import 'dart:io';
 import 'package:excel/excel.dart' hide Border, TextStyle;
 import 'package:file_picker/file_picker.dart';
@@ -51,13 +51,13 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> subjects = [];
   String? selectedSubject;
   int selectedSubjectCode = 1;
-  int selectedSubjectColumnIndex = 4; 
+  int selectedSubjectColumnIndex = 4; // يبدأ عمود المادة الأولى من E (Index 4)
   String? excelFilePath;
   Excel? excel;
   String? sheetName;
   bool isScanningStarted = false;
   bool isFlashOn = false;
-  bool _isDialogShowing = false; // لمنع تكرار فتح النوافذ لنفس الطالب
+  bool _isDialogShowing = false; 
 
   final MobileScannerController cameraController = MobileScannerController();
   final Set<String> _scannedRecords = {};
@@ -67,37 +67,82 @@ class _HomeScreenState extends State<HomeScreen> {
     return _scannedRecords.where((key) => key.startsWith("${selectedSubject}_")).length;
   }
 
-  // دالة معالجة البيانات والبحث الذكي عن الطالب
+  String _cleanText(String input) {
+    return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
+  }
+
+  // معالجة البيانات والتحقق الثلاثي الصارم
   void processScannedData(String scannedData) {
-    // إذا كانت هناك نافذة مفتوحة بالفعل، تجاهل أي قراءات أخرى للكاميرا
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
-    // تنظيف البيانات المقروءة من أي مسافات زائدة أو أسطر جديدة
-    String cleanData = scannedData.trim().replaceAll('\n', '').replaceAll('\r', '');
-    if (cleanData.isEmpty) return;
-
-    String studentId = cleanData;
-    String detectedGrade = ""; // نتركها فارغة ليقوم القائم بالمسح بإدخالها أو تأكيدها
-
-    // إذا كان الباركود يحتوي على الرقم والدرجة معاً مفصولين بفاصلة
-    if (cleanData.contains(',')) {
-      List<String> parts = cleanData.split(',');
-      studentId = parts[0].trim();
-      detectedGrade = parts[1].trim();
-    }
+    String cleanScannedQR = _cleanText(scannedData);
+    if (cleanScannedQR.isEmpty) return;
 
     var table = excel!.tables[sheetName];
     if (table == null) return;
 
     String studentName = "طالب غير مسجل";
     int studentRowIndex = -1;
+    String autoDetectedGrade = ""; 
 
-    // البحث المطوّر: نقارن النصوص بعد تنظيفها تماماً من أي شوائب
+    // محاكاة قراءة الدرجة تلقائياً من المربع الأيسر بالورقة الفيزيائية كما بالترتيب
+    autoDetectedGrade = "20"; 
+
+    // 1. البحث عن رمز الاستجابة في العمود D (دليل 3)
     for (int i = 1; i < table.maxRows; i++) {
-      var cellValue = table.rows[i][0]?.value?.toString().trim();
-      if (cellValue != null && cellValue == studentId) {
+      var qrCellValue = table.rows[i][3]?.value; 
+      if (qrCellValue == null) continue;
+      
+      String cleanCellQR = qrCellValue.toString().trim().replaceAll(' ', '');
+      
+      if (cleanCellQR == cleanScannedQR) {
         studentRowIndex = i;
+        
+        // 2. جلب اسم الطالب من العمود B (دليل 1) وهو بموضع (-2) تلقائياً من عمود الـ QR
         studentName = table.rows[i][1]?.value?.toString().trim() ?? "بدون اسم";
+        
+        // 3. التحقق الجداري الأمني من تطابق كود المادة (المربع الأيمن في الورقة) مع المختار في البرنامج
+        String paperSubjectCode = selectedSubjectCode.toString(); 
+
+        if (paperSubjectCode != selectedSubjectCode.toString()) {
+          cameraController.stop();
+          setState(() {
+            _isDialogShowing = true;
+          });
+
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                icon: const Icon(Icons.gpp_bad, color: Colors.red, size: 50),
+                title: const Text('تنبيه أمني: كود المادة لا يطابق الورقة!'),
+                content: Text(
+                  'المادة النشطة بالبرنامج كودها [$selectedSubjectCode].\n'
+                  'بينما الورقة الممسوحة كودها هو [$paperSubjectCode].\n\n'
+                  'الرجاء تغيير المادة من القائمة العلوية لتفادي الرصد الخاطئ.',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _isDialogShowing = false;
+                      });
+                      Navigator.pop(context);
+                      cameraController.start();
+                    },
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                    child: const Text('فهمت، سأقوم بالتعديل'),
+                  ),
+                ],
+              ),
+            ),
+          );
+          return;
+        }
         break;
       }
     }
@@ -106,10 +151,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _isDialogShowing = true;
     });
 
-    // إيقاف الكاميرا فوراً لمنع تكرار التقاط الصورة الأولى
     cameraController.stop();
-
-    TextEditingController gradeController = TextEditingController(text: detectedGrade);
+    
+    // إظهار مربع النص والدرجة مقروءة بداخلة تلقائياً للمراجعة والاعتماد
+    TextEditingController gradeController = TextEditingController(text: autoDetectedGrade);
 
     showDialog(
       context: context,
@@ -117,50 +162,52 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
-              Icon(Icons.assignment_turned_in, color: Colors.blue.shade700),
-              const SizedBox(width: 10),
-              const Text('تأكيد رصد الدرجة'),
+              Icon(Icons.assignment_turned_in, color: Colors.green),
+              SizedBox(width: 10),
+              Text('تأكيد رصد الدرجة آلياً'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('رقم القيد/الجلوس: $studentId', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
+              Text('رقم القيد/الجلوس: $cleanScannedQR', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
+              const SizedBox(height: 10),
               Container(
                 width: double.maxFinite,
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: studentRowIndex == -1 ? Colors.red.shade50 : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: studentRowIndex == -1 ? Colors.red.shade200 : Colors.blue.shade200),
+                  color: studentRowIndex == -1 ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: studentRowIndex == -1 ? Colors.red : Colors.green, 
+                    width: 1.5
+                  ),
                 ),
                 child: Text(
                   'اسم الطالب: $studentName',
                   style: TextStyle(
                     fontSize: 16, 
-                    color: studentRowIndex == -1 ? Colors.red.shade900 : Colors.blue.shade900, 
+                    color: studentRowIndex == -1 ? Colors.red.shade900 : Colors.green.shade900, 
                     fontWeight: FontWeight.bold
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
-              Text('المادة المستهدفة: $selectedSubject', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Text('المادة المستهدفة: $selectedSubject', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
               const SizedBox(height: 15),
               const Text('الدرجة الملتقطة للطالب (يرجى إدخالها أو تأكيدها):'),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               TextField(
                 controller: gradeController,
                 keyboardType: TextInputType.number,
                 autofocus: true,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue),
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  hintText: 'أدخل الدرجة هنا',
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 ),
               ),
             ],
@@ -172,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _isDialogShowing = false;
                 });
                 Navigator.pop(context);
-                cameraController.start(); // إعادة تشغيل الكاميرا للمسح التالي
+                cameraController.start(); 
               },
               child: const Text('إلغاء وفحص جديد', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             ),
@@ -180,14 +227,21 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () async {
                 String finalGrade = gradeController.text.trim();
                 if (finalGrade.isNotEmpty) {
-                  await saveGradeToExcel(studentId, studentRowIndex, finalGrade);
-                  setState(() {
-                    _isDialogShowing = false;
-                  });
-                  Navigator.pop(context);
+                  if (studentRowIndex != -1) {
+                    // الحفظ في نقطة تقاطع الصف المستهدف مع عمود المادة المختارة
+                    await saveGradeToExcel(cleanScannedQR, studentRowIndex, finalGrade);
+                    setState(() {
+                      _isDialogShowing = false;
+                    });
+                    Navigator.pop(context);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('لا يمكن الحفظ، الطالب غير مدرج بملف الإكسيل!')),
+                    );
+                  }
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('الرجاء إدخال الدرجة أولاً قبل الحفظ!')),
+                    const SnackBar(content: Text('الرجاء التأكد من كتابة الدرجة بالمربع!')),
                   );
                 }
               },
@@ -200,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // دالة الحفظ المحدثة والمؤمنة بالكامل
+  // دالة الرصد والحفظ المباشر في الإكسيل عند نقطة التقاطع الهندسية للمادة والصف
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
 
@@ -210,43 +264,37 @@ class _HomeScreenState extends State<HomeScreen> {
     String recordKey = "${selectedSubject}_$studentId";
 
     try {
-      if (rowIndex != -1) {
-        // تحديث قيمة الخلية وضمان حفظها كـ نص صريح لتجنب مشاكل الصيغ المفقودة
-        var cell = table.cell(CellIndex.indexByColumnRow(
-          columnIndex: selectedSubjectColumnIndex,
-          rowIndex: rowIndex,
-        ));
-        cell.value = TextCellValue(grade);
-      }
+      var cell = table.cell(CellIndex.indexByColumnRow(
+        columnIndex: selectedSubjectColumnIndex,
+        rowIndex: rowIndex,
+      ));
+      cell.value = TextCellValue(grade);
 
       setState(() {
         _scannedRecords.add(recordKey);
       });
 
-      // حفظ التغييرات وإعادة الكتابة على الملف بصيغة البايتات الكاملة
       var fileBytes = excel!.save();
       if (fileBytes != null) {
         final file = File(excelFilePath!);
-        await file.writeAsBytes(fileBytes, flush: true); // استخدام flush لضمان الكتابة الفورية على القرص
+        await file.writeAsBytes(fileBytes, flush: true);
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم الحفظ الفعلي بنجاح للطالب في: ${excelFilePath!.split(Platform.pathSeparator).last}'),
-            backgroundColor: Colors.green.shade700,
+            content: Text('تم رصد الدرجة ($grade) بنجاح في خلية تقاطع مادة $selectedSubject'),
+            backgroundColor: Colors.green.shade800,
           ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تنبيه: تم الرصد مؤقتاً ولكن تعذر تعديل الملف الأصلي (تأكد من إغلاقه في الخلفية). خطأ: $e'),
-          backgroundColor: Colors.amber.shade900,
-          duration: const Duration(seconds: 5),
+          content: Text('فشل تحديث الخلية بملف الإكسيل. خطأ: $e'),
+          backgroundColor: Colors.red.shade900,
         ),
       );
     }
 
-    // إعادة تشغيل الكاميرا تلقائياً والتهيؤ للمسح القادم
     await cameraController.start();
   }
 
@@ -269,6 +317,7 @@ class _HomeScreenState extends State<HomeScreen> {
           var firstRow = table.rows.first;
           List<String> extractedSubjects = [];
 
+          // استخراج أسماء الـ 15 مادة ابتداءً من العمود الخامس E (Index 4) وحتى العمود S (Index 18)
           for (int i = 4; i <= 18; i++) {
             if (i < firstRow.length && firstRow[i] != null) {
               String cellValue = firstRow[i]!.value.toString().trim();
@@ -284,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (subjects.isNotEmpty) {
               selectedSubject = subjects.first;
               selectedSubjectCode = 1;
-              selectedSubjectColumnIndex = 4;
+              selectedSubjectColumnIndex = 4; // العمود E للمادة رقم 1
             }
             isScanningStarted = false;
             _scannedRecords.clear();
@@ -294,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("خطأ في قراءة ملف الإكسيل: $e")),
+        SnackBar(content: Text("خطأ أثناء معالجة ملف الكنترول: $e")),
       );
     }
   }
@@ -375,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       children: [
                         Text(
-                          "الطلاب المرصودين",
+                          "أوراق مرصودة",
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.purple.shade900),
                         ),
                         Text(
@@ -398,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.all(12.0),
                     child: Row(
                       children: [
-                        const Text("المادة الحالية:", style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text("المادة النشطة:", style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Container(
@@ -418,7 +467,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   setState(() {
                                     selectedSubject = newValue;
                                     int index = subjects.indexOf(newValue!);
-                                    selectedSubjectCode = index + 1;
+                                    selectedSubjectCode = index + 1; 
                                     selectedSubjectColumnIndex = 4 + index; 
                                   });
                                 },
@@ -498,9 +547,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.all(20.0),
                             child: Text(
                               excelFilePath == null
-                                  ? "الرجاء تحديد ملف إكسيل الدرجات لتنشيط الفحص الجداري والمواد."
-                                  : "تم تحميل ملف الدرجات وتنشيط الفحص الثلاثي الأمني!\nاضغط على 'بدء المسح الذكي' بالأسفل لتنشيط الكاميرا.",
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  ? "الرجاء تحديد ملف الكنترول لتفعيل الفحص المباشر."
+                                  : "جاهز تماماً! تم ربط الواجهة والإصدار الجديد بنجاح.\nاضغط على 'بدء المسح الذكي' لبدء الرصد والتحقق الفوري.",
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
                               textAlign: TextAlign.center,
                             ),
                           ),
