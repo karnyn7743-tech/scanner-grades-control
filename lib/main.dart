@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-// تم إيقاف استيراد أدوات الرسم من الإكسيل لمنع التعارض مع فلاتر
-import 'package:excel/excel.dart' hide Border, TextStyle; 
+import 'package:excel/excel.dart' hide Border, TextStyle;
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -52,7 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> subjects = [];
   String? selectedSubject;
   int selectedSubjectCode = 1;
+  int selectedSubjectColumnIndex = 4; // العمود الافتراضي للمادة الأولى
   String? excelFilePath;
+  Excel? excel;
+  String? sheetName;
   bool isScanningStarted = false;
   bool isFlashOn = false;
 
@@ -64,38 +66,149 @@ class _HomeScreenState extends State<HomeScreen> {
     return _scannedRecords.where((key) => key.startsWith("${selectedSubject}_")).length;
   }
 
-  void handleStudentGrading(String studentId, String grade) {
-    if (selectedSubject == null) return;
-    String recordKey = "${selectedSubject}_$studentId";
+  // دالة البحث عن اسم الطالب ورصد درجته داخل ملف الإكسيل
+  void processScannedData(String scannedData) {
+    if (excel == null || sheetName == null || selectedSubject == null) return;
 
-    if (_scannedRecords.contains(recordKey)) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Row(
+    // افترضنا أن البيانات الممسوحة تحتوي على الرقم والدرجة مفصولين بـ فاصلة أو مسافة، أو الرقم فقط والدرجة افتراضية
+    String studentId = scannedData.trim();
+    String detectedGrade = "25"; // درجة افتراضية في حال لم تكن مدمجة بالباركود
+
+    // إذا كان الباركود يحتوي على الرقم والدرجة معاً (مثال: 2026001,23)
+    if (scannedData.contains(',')) {
+      List<String> parts = scannedData.split(',');
+      studentId = parts[0].trim();
+      detectedGrade = parts[1].trim();
+    }
+
+    var table = excel!.tables[sheetName];
+    if (table == null) return;
+
+    String studentName = "طالب غير مسجل";
+    int studentRowIndex = -1;
+
+    // البحث عن الطالب في العمود الأول (رقم القيد/الجلوس) ابتداءً من الصف الثاني
+    for (int i = 1; i < table.maxRows; i++) {
+      var cellValue = table.rows[i][0]?.value?.toString().trim();
+      if (cellValue == studentId) {
+        studentRowIndex = i;
+        // افترضنا أن اسم الطالب موجود في العمود الثاني (الدليل 1)
+        studentName = table.rows[i][1]?.value?.toString().trim() ?? "بدون اسم";
+        break;
+      }
+    }
+
+    // إيقاف الكاميرا مؤقتاً لكي لا تكرر القراءة أثناء ظهور النافذة
+    cameraController.stop();
+
+    // إظهار نافذة التأكيد والتعديل للمستخدم
+    TextEditingController gradeController = TextEditingController(text: detectedGrade);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false, // يجب الضغط على الأزرار للتفاعل
+      builder: (context) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Row(
             children: [
-              Icon(Icons.warning, color: Colors.amber),
-              SizedBox(width: 10),
-              Text('تنبيه تكرار الرصد'),
+              Icon(Icons.assignment_turned_in, color: Colors.blue.shade700),
+              const SizedBox(width: 10),
+              const Text('تأكيد رصد الدرجة'),
             ],
           ),
-          content: Text('الطالب ذو الرقم ($studentId) تم رصد درجته مسبقاً في مادة ($selectedSubject).'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('رقم الطالب: $studentId', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text('اسم الطالب: $studentName', style: TextStyle(fontSize: 16, color: Colors.blue.shade900, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text('المادة: $selectedSubject', style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 15),
+              const Text('الدرجة الملتقطة (يمكنك التعديل):'),
+              const SizedBox(height: 5),
+              TextField(
+                controller: gradeController,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+              ),
+            ],
+          ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('حسناً'),
+              onPressed: () {
+                Navigator.pop(context);
+                // إعادة تشغيل الكاميرا للمسح التالي
+                cameraController.start();
+              },
+              child: const Text('إلغاء', style: TextStyle(color: Colors.red)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                String finalGrade = gradeController.text.trim();
+                if (finalGrade.isNotEmpty) {
+                  await saveGradeToExcel(studentId, studentRowIndex, finalGrade);
+                  Navigator.pop(context);
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+              child: const Text('حفظ ورصد'),
             ),
           ],
         ),
-      );
-    } else {
-      setState(() {
-        _scannedRecords.add(recordKey);
-      });
+      ),
+    );
+  }
+
+  // دالة الحفظ الفعلي داخل ملف الإكسيل وحفظ الملف في الجهاز
+  Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
+    if (excel == null || sheetName == null || excelFilePath == null) return;
+
+    var table = excel!.tables[sheetName];
+    if (table == null) return;
+
+    String recordKey = "${selectedSubject}_$studentId";
+
+    setState(() {
+      // إذا كان الطالب تم العثور عليه في الملف
+      if (rowIndex != -1) {
+        // تحديث الخلية المحددة للمادة بالدرجة الجديدة
+        var cell = table.cell(CellIndex.indexByColumnRow(
+          columnIndex: selectedSubjectColumnIndex,
+          rowIndex: rowIndex,
+        ));
+        cell.value = TextCellValue(grade);
+      }
+
+      _scannedRecords.add(recordKey);
+    });
+
+    try {
+      // حفظ التغييرات كتابةً فوق الملف الأصلي المختار
+      var fileBytes = excel!.save();
+      if (fileBytes != null) {
+        File(excelFilePath!)
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(fileBytes);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم حفظ درجة الطالب بنجاح في ملف الإكسيل!')),
+        );
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم رصد درجة الطالب $studentId بنجاح!')),
+        SnackBar(content: Text('خطأ أثناء حفظ الملف: $e')),
       );
     }
+
+    // إعادة تشغيل الكاميرا تلقائياً بعد الحفظ للمسح التالي
+    cameraController.start();
   }
 
   Future<void> pickAndLoadExcel() async {
@@ -108,15 +221,16 @@ class _HomeScreenState extends State<HomeScreen> {
       if (result != null && result.files.single.path != null) {
         String path = result.files.single.path!;
         var bytes = File(path).readAsBytesSync();
-        var excel = Excel.decodeBytes(bytes);
+        excel = Excel.decodeBytes(bytes);
+        sheetName = excel!.tables.keys.first;
 
-        String firstSheet = excel.tables.keys.first;
-        var table = excel.tables[firstSheet];
+        var table = excel!.tables[sheetName];
 
         if (table != null && table.maxRows > 0) {
           var firstRow = table.rows.first;
           List<String> extractedSubjects = [];
 
+          // قراءة المواد من العمود 4 إلى 18
           for (int i = 4; i <= 18; i++) {
             if (i < firstRow.length && firstRow[i] != null) {
               String cellValue = firstRow[i]!.value.toString().trim();
@@ -132,8 +246,10 @@ class _HomeScreenState extends State<HomeScreen> {
             if (subjects.isNotEmpty) {
               selectedSubject = subjects.first;
               selectedSubjectCode = 1;
+              selectedSubjectColumnIndex = 4; // تبدأ من العمود الرابع
             }
             isScanningStarted = false;
+            _scannedRecords.clear();
           });
         }
       }
@@ -269,7 +385,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onChanged: (String? newValue) {
                                   setState(() {
                                     selectedSubject = newValue;
-                                    selectedSubjectCode = subjects.indexOf(newValue!) + 1;
+                                    int index = subjects.indexOf(newValue!);
+                                    selectedSubjectCode = index + 1;
+                                    selectedSubjectColumnIndex = 4 + index; // تحديد العمود بدقة للإكسيل
                                   });
                                 },
                               ),
@@ -311,8 +429,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               onDetect: (capture) {
                                 final List<Barcode> barcodes = capture.barcodes;
                                 if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
-                                  String scannedId = barcodes.first.rawValue!;
-                                  handleStudentGrading(scannedId, "25");
+                                  String scannedData = barcodes.first.rawValue!;
+                                  processScannedData(scannedData);
                                 }
                               },
                             ),
