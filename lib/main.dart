@@ -87,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // معالجة المسح الموحد من الكاميرا الرئيسية لمنع تداخل العدسات
+  // الكاميرا الرئيسية مستمرة دائماً ولا تتوقف، مما يمنع تعليق الشاشة السوداء نهائياً
   void onCameraDetectHandler(BarcodeCapture capture) {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -115,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // فتح نافذة الإدخال والاعتماد الفوري للطالب
     setState(() {
       _isDialogShowing = true;
       currentStudentQR = cleanScannedQR;
@@ -232,7 +231,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (table == null) return;
 
     try {
-      // 1. تحديث المصفوفة الحية داخل الذاكرة لضمان عدم ضياع أي رصد سابق
+      // 1. تحديث الجدول في الذاكرة الحية للمشروع لضمان دقة الرصد التراكمي
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
@@ -243,21 +242,22 @@ class _HomeScreenState extends State<HomeScreen> {
         _scannedRecords.add("${selectedSubject}_$studentId");
       });
 
-      // 2. تصدير وحفظ الملف بصيغة متوافقة 100% مع أندرويد الحديث وحزمة FileSaver المحدثة
+      // 2. آلية الحفظ المتوافقة 100% مع إصدار file_saver: ^0.4.0 الحديث والمكتوب بمشروعك
       var fileBytes = excel!.save();
       if (fileBytes != null) {
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        // دمج الامتداد داخل الاسم مباشرة لحل مشكلة البناء الفاشل في السيرفر
+        String fullFileName = "control_${selectedSubject}_update_$timestamp.xlsx";
         
         await FileSaver.instance.saveFile(
-          name: "كنترول_${selectedSubject}_تحديث_$timestamp",
+          name: fullFileName,
           bytes: Uint8List.fromList(fileBytes),
-          ext: "xlsx",
-          mimeType: MimeType.microsoftExcel,
+          mimeType: MimeType.other, 
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم رصد الدرجة ($grade) للطالب بنجاح وتم حفظ نسخة المجلد!'),
+            content: Text('✅ تم رصد الدرجة ($grade) للطالب بنجاح وتم حفظ نسخة محدثة!'),
             backgroundColor: Colors.green.shade700,
             duration: const Duration(seconds: 2),
           ),
@@ -269,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // العودة الفورية التلقائية لوضع الكاميرا دون أي تعليق
+    // إعادة الكاميرا فوراً وبشكل تلقائي للعمل المستمر دون تعليق
     setState(() {
       _isDialogShowing = false;
     });
@@ -324,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد المستقر v5.0', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          title: const Text('نظام أبو الخضر للرصد المستقر v5.2', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           centerTitle: true,
           elevation: 2,
           actions: [
@@ -451,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.sync_saved_locally_outlined, color: Colors.blue, size: 18),
+                      Icon(Icons.refresh, color: Colors.blue, size: 18),
                       SizedBox(width: 8),
                       Text("وجه الكاميرا لـ QR الطالب، سيفتح حقل رصد الدرجة مباشرة ومستمر بدون انقطاع.", style: TextStyle(fontSize: 11, color: Colors.blue)),
                     ],
