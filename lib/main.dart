@@ -5,6 +5,7 @@ import 'package:excel/excel.dart' as imgExcel;
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:file_saver/file_saver.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 void main() {
   runApp(const MyApp());
@@ -32,7 +33,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'نظام أبو الخضر للرصد الثنائي المستقر',
+      title: 'نظام أبو الخضر للرصد الذكي المستقر',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -72,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
     torchEnabled: false,
   );
 
+  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+
   String currentStudentQR = "";
   String currentStudentName = "طالب غير مسجل";
   int currentStudentRowIndex = -1;
@@ -87,8 +90,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // الكاميرا الرئيسية مستمرة دائماً ولا تتوقف، مما يمنع تعليق الشاشة السوداء نهائياً
-  void onCameraDetectHandler(BarcodeCapture capture) {
+  // دالة ذكية لاستخراج الأرقام فقط (الدرجة) من النصوص المقروءة بخط اليد
+  String _extractGradeFromText(String text) {
+    final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); // لقط أرقام مكونة من خانة أو خانتين
+    final Iterable<Match> matches = numRegExp.allMatches(text);
+    if (matches.isNotEmpty) {
+      return matches.first.group(0) ?? "0";
+    }
+    return "0";
+  }
+
+  // الكاميرا الرئيسية مستمرة وتلتقط الـ QR والدرجة معاً في لحظة واحدة بدون تعليق
+  void onCameraDetectHandler(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
     final List<Barcode> barcodes = capture.barcodes;
@@ -115,12 +128,33 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
+    // تفعيل الـ OCR الذكي الخلفي لالتقاط الدرجة من الصورة الحالية للكاميرا إن أمكن
+    String autoDetectedGrade = "0";
+    if (capture.image != null) {
+      try {
+        final Uint8List bytes = capture.image!.bytes;
+        final InputImage inputImage = InputImage.fromBytes(
+          bytes: bytes,
+          metadata: InputImageMetadata(
+            size: Size(capture.image!.width.toDouble(), capture.image!.height.toDouble()),
+            rotation: InputImageRotation.rotation0,
+            format: InputImageFormat.nv21,
+            bytesPerRow: capture.image!.width,
+          ),
+        );
+        final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+        autoDetectedGrade = _extractGradeFromText(recognizedText.text);
+      } catch (_) {
+        autoDetectedGrade = "0"; // في حال فشل التعرف التلقائي تبدأ من الصفر ليدخلها المستخدم
+      }
+    }
+
     setState(() {
       _isDialogShowing = true;
       currentStudentQR = cleanScannedQR;
       currentStudentName = studentName;
       currentStudentRowIndex = studentRowIndex;
-      gradeController.clear();
+      gradeController.text = autoDetectedGrade == "0" ? "" : autoDetectedGrade;
     });
 
     showConfirmationDialog();
@@ -137,9 +171,9 @@ class _HomeScreenState extends State<HomeScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
-                const Icon(Icons.person_search_rounded, color: Colors.blue, size: 28),
+                const Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
                 const SizedBox(width: 10),
-                const Text('بيانات الطالب المقروءة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
             content: SingleChildScrollView(
@@ -149,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Row(
                     children: [
-                      const Text('رقم الجلوس (QR): ', style: TextStyle(color: Colors.grey)),
+                      const Text('رقم الجلوس (QR): ', style: TextStyle(color: Colors.grey, fontSize: 13)),
                       Text(currentStudentQR, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                     ],
                   ),
@@ -175,16 +209,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  const Text('أدخل درجة الطالب الحالية:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('الدرجة الملتقطة (يمكنك تعديلها يدوياً):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   TextField(
                     controller: gradeController,
                     keyboardType: TextInputType.number,
                     autofocus: true,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.redAccent),
                     decoration: InputDecoration(
-                      hintText: '0',
+                      hintText: 'أدخل الدرجة هنا',
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -205,13 +239,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ElevatedButton.icon(
                 onPressed: currentStudentRowIndex == -1 ? null : () async {
                   String enteredGrade = gradeController.text.trim();
-                  if (enteredGrade.isNotEmpty) {
-                    Navigator.pop(context);
-                    await saveGradeToExcel(currentStudentQR, currentStudentRowIndex, enteredGrade);
-                  }
+                  if (enteredGrade.isEmpty) enteredGrade = "0";
+                  Navigator.pop(context);
+                  await saveGradeToExcel(currentStudentQR, currentStudentRowIndex, enteredGrade);
                 },
                 icon: const Icon(Icons.save_rounded),
-                label: const Text('اعتماد وحفظ سريع'),
+                label: const Text('اعتماد وحفظ نهائي'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green.shade600,
                   foregroundColor: Colors.white,
@@ -226,12 +259,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
-    if (excel == null || sheetName == null) return;
+    if (excel == null || sheetName == null || excelFilePath == null) return;
     var table = excel!.tables[sheetName];
     if (table == null) return;
 
     try {
-      // 1. تحديث الجدول في الذاكرة الحية للمشروع لضمان دقة الرصد التراكمي
+      // 1. تحديث الجدول في الذاكرة الحية للمشروع
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
@@ -242,22 +275,24 @@ class _HomeScreenState extends State<HomeScreen> {
         _scannedRecords.add("${selectedSubject}_$studentId");
       });
 
-      // 2. آلية الحفظ المتوافقة 100% مع إصدار file_saver: ^0.4.0 الحديث والمكتوب بمشروعك
       var fileBytes = excel!.save();
       if (fileBytes != null) {
+        // 2. الحفظ المباشر والقطعي داخل نفس الملف الأصلي الذي قمت باختياره وتعديله فوراً
+        final File originalFile = File(excelFilePath!);
+        await originalFile.writeAsBytes(fileBytes, flush: true);
+
+        // 3. حفظ نسخة احتياطية إضافية في مجلد التنزيلات لضمان الأمان الكامل
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        // دمج الامتداد داخل الاسم مباشرة لحل مشكلة البناء الفاشل في السيرفر
-        String fullFileName = "control_${selectedSubject}_update_$timestamp.xlsx";
-        
+        String backupName = "تحديث_${selectedSubject}_$timestamp.xlsx";
         await FileSaver.instance.saveFile(
-          name: fullFileName,
+          name: backupName,
           bytes: Uint8List.fromList(fileBytes),
-          mimeType: MimeType.other, 
+          mimeType: MimeType.other,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم رصد الدرجة ($grade) للطالب بنجاح وتم حفظ نسخة محدثة!'),
+            content: Text('✅ تم حفظ الدرجة ($grade) في ملف الكنترول الأصلي ونسخة التنزيلات!'),
             backgroundColor: Colors.green.shade700,
             duration: const Duration(seconds: 2),
           ),
@@ -265,11 +300,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ حدث خطأ أثناء عملية الحفظ الفعلي: $e'), backgroundColor: Colors.red)
+        SnackBar(content: Text('❌ فشل الكتابة المباشرة في الملف: $e \nتم حفظ التعديل في الذاكرة المؤقتة.'), backgroundColor: Colors.red)
       );
     }
 
-    // إعادة الكاميرا فوراً وبشكل تلقائي للعمل المستمر دون تعليق
     setState(() {
       _isDialogShowing = false;
     });
@@ -282,7 +316,8 @@ class _HomeScreenState extends State<HomeScreen> {
         allowedExtensions: ['xlsx', 'xls']
       );
       if (result != null && result.files.single.path != null) {
-        var bytes = File(result.files.single.path!).readAsBytesSync();
+        excelFilePath = result.files.single.path;
+        var bytes = File(excelFilePath!).readAsBytesSync();
         excel = imgExcel.Excel.decodeBytes(bytes);
         sheetName = excel!.tables.keys.first;
         var table = excel!.tables[sheetName];
@@ -301,7 +336,6 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           setState(() {
-            excelFilePath = result.files.single.path;
             subjects = extractedSubjects;
             if (subjects.isNotEmpty) {
               selectedSubject = subjects.first;
@@ -324,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد المستقر v5.2', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          title: const Text('نظام أبو الخضر للرصد المستقر v5.3', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           centerTitle: true,
           elevation: 2,
           actions: [
@@ -451,9 +485,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.refresh, color: Colors.blue, size: 18),
+                      Icon(Icons.flash_on_rounded, color: Colors.blue, size: 18),
                       SizedBox(width: 8),
-                      Text("وجه الكاميرا لـ QR الطالب، سيفتح حقل رصد الدرجة مباشرة ومستمر بدون انقطاع.", style: TextStyle(fontSize: 11, color: Colors.blue)),
+                      Text("وجه الكاميرا؛ سيتم لقط الـ QR والدرجة معاً تلقائياً مع إمكانية التعديل السريع.", style: TextStyle(fontSize: 11, color: Colors.blue)),
                     ],
                   ),
                 ),
@@ -467,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
+    _textRecognizer.dispose();
     super.dispose();
   }
 }
