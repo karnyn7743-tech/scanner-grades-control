@@ -90,9 +90,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // دالة ذكية لاستخراج الأرقام فقط (الدرجة) من النصوص المقروءة بخط اليد
   String _extractGradeFromText(String text) {
-    final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); // لقط أرقام مكونة من خانة أو خانتين
+    final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); 
     final Iterable<Match> matches = numRegExp.allMatches(text);
     if (matches.isNotEmpty) {
       return matches.first.group(0) ?? "0";
@@ -100,7 +99,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return "0";
   }
 
-  // الكاميرا الرئيسية مستمرة وتلتقط الـ QR والدرجة معاً في لحظة واحدة بدون تعليق
   void onCameraDetectHandler(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -128,7 +126,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // تفعيل الـ OCR الذكي الخلفي لالتقاط الدرجة من الصورة الحالية للكاميرا إن أمكن
     String autoDetectedGrade = "0";
     if (capture.image != null) {
       try {
@@ -145,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
         autoDetectedGrade = _extractGradeFromText(recognizedText.text);
       } catch (_) {
-        autoDetectedGrade = "0"; // في حال فشل التعرف التلقائي تبدأ من الصفر ليدخلها المستخدم
+        autoDetectedGrade = "0"; 
       }
     }
 
@@ -169,11 +166,11 @@ class _HomeScreenState extends State<HomeScreen> {
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
+            title: const Row(
               children: [
-                const Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
-                const SizedBox(width: 10),
-                const Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
+                SizedBox(width: 10),
+                Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
             content: SingleChildScrollView(
@@ -209,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  const Text('الدرجة الملتقطة (يمكنك تعديلها يدوياً):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('الالتقاط الذكي (أو أدخلها يدوياً):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   TextField(
                     controller: gradeController,
@@ -218,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.redAccent),
                     decoration: InputDecoration(
-                      hintText: 'أدخل الدرجة هنا',
+                      hintText: 'أدخل الدرجة',
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -244,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   await saveGradeToExcel(currentStudentQR, currentStudentRowIndex, enteredGrade);
                 },
                 icon: const Icon(Icons.save_rounded),
-                label: const Text('اعتماد وحفظ نهائي'),
+                label: const Text('اعتماد وحفظ'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green.shade600,
                   foregroundColor: Colors.white,
@@ -264,7 +261,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (table == null) return;
 
     try {
-      // 1. تحديث الجدول في الذاكرة الحية للمشروع
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
@@ -277,22 +273,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
       var fileBytes = excel!.save();
       if (fileBytes != null) {
-        // 2. الحفظ المباشر والقطعي داخل نفس الملف الأصلي الذي قمت باختياره وتعديله فوراً
+        // 1. الحفظ القطعي والمباشر في الملف المختار
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // 3. حفظ نسخة احتياطية إضافية في مجلد التنزيلات لضمان الأمان الكامل
+        // 2. إصلاح دالة الحفظ الاحتياطي لتتوافق مع إصدار file_saver 0.4.0 الجديد بدون معلمات ملغية
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        String backupName = "تحديث_${selectedSubject}_$timestamp.xlsx";
         await FileSaver.instance.saveFile(
-          name: backupName,
-          bytes: Uint8List.fromList(fileBytes),
-          mimeType: MimeType.other,
+          "تحديث_${selectedSubject}_$timestamp",
+          Uint8List.fromList(fileBytes),
+          "xlsx",
+          mimeType: MimeType.MICROSOFT_EXCEL
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم حفظ الدرجة ($grade) في ملف الكنترول الأصلي ونسخة التنزيلات!'),
+            content: Text('✅ تم حفظ الدرجة ($grade) في الملف الأصلي والنسخة الاحتياطية!'),
             backgroundColor: Colors.green.shade700,
             duration: const Duration(seconds: 2),
           ),
@@ -300,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ فشل الكتابة المباشرة في الملف: $e \nتم حفظ التعديل في الذاكرة المؤقتة.'), backgroundColor: Colors.red)
+        SnackBar(content: Text('❌ فشل الكتابة المباشرة: $e'), backgroundColor: Colors.red)
       );
     }
 
@@ -358,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد المستقر v5.3', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          title: const Text('نظام أبو الخضر للرصد المستقر v5.4', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           centerTitle: true,
           elevation: 2,
           actions: [
@@ -464,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         )
                       : const Center(
                           child: Text(
-                            "الرجاء تحديد ملف الكنترول أولاً لبدء تشغيل الكاميرا التلقائية والمستمرة.",
+                            "الرجاء تحديد ملف الكنترول أولاً لبدء تشغيل الكاميرا التلقائية.",
                             style: TextStyle(color: Colors.grey, fontSize: 13),
                             textAlign: TextAlign.center,
                           ),
@@ -487,7 +483,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Icon(Icons.flash_on_rounded, color: Colors.blue, size: 18),
                       SizedBox(width: 8),
-                      Text("وجه الكاميرا؛ سيتم لقط الـ QR والدرجة معاً تلقائياً مع إمكانية التعديل السريع.", style: TextStyle(fontSize: 11, color: Colors.blue)),
+                      Text("وجه الكاميرا؛ سيتم لقط الـ QR والدرجة معاً تلقائياً.", style: TextStyle(fontSize: 11, color: Colors.blue)),
                     ],
                   ),
                 ),
