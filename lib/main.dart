@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:excel/excel.dart' as imgExcel;
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:file_saver/file_saver.dart';
 
 void main() {
   runApp(const MyApp());
@@ -62,8 +63,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isDialogShowing = false; 
 
   final MobileScannerController cameraController = MobileScannerController();
-  
-  // المحرك الذكي لقراءة خط اليد والكمبيوتر
   final TextRecognizer textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   final Set<String> _scannedRecords = {};
 
@@ -76,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
   }
 
-  // معالجة البيانات والتحقق الفوري عند رصد الـ QR
+  // دالة مطورة لمعالجة ومطابقة الـ QR والبحث عن الطالب في الإكسيل
   void processScannedData(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -92,7 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
     String studentName = "طالب غير مسجل";
     int studentRowIndex = -1;
     
-    // البحث عن الطالب في العمود D
+    // البحث عن رقم القيد/الجلوس الكنترولي (مثل 2949/7) في العمود D (الفهرس 3)
     for (int i = 1; i < table.maxRows; i++) {
       var qrCellValue = table.rows[i][3]?.value; 
       if (qrCellValue == null) continue;
@@ -105,16 +104,13 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    if (studentRowIndex == -1) return; 
-
+    // لضمان استمرارية العمل، حتى لو لم يعثر على الاسم، نتيح لك رصده أو التحقق منه يدوياً
     setState(() {
       _isDialogShowing = true;
     });
     cameraController.stop();
 
-    // القيمة الافتراضية المقترحة للدرجة قبل التعديل المباشر
-    String autoDetectedGrade = "20"; 
-
+    String autoDetectedGrade = ""; // نتركها فارغة ليتم إدخالها أو جلبها
     TextEditingController gradeController = TextEditingController(text: autoDetectedGrade);
 
     showDialog(
@@ -123,36 +119,36 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.edit_document, color: Colors.blue),
-              SizedBox(width: 10),
-              Text('اعتماد وحفظ الدرجة في الكنترول'),
+              Icon(Icons.edit_document, color: Colors.blue.shade700),
+              const SizedBox(width: 10),
+              const Text('اعتماد وحفظ خلية التقاطع'),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('رقم القيد/الجلوس الكنترولي: $cleanScannedQR', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              Text('رقم القيد/الجلوس الكنترولي: $cleanScannedQR', style: const TextStyle( Bertram: true, fontWeight: FontWeight.bold, color: Colors.grey)),
               const SizedBox(height: 10),
               Container(
                 width: double.maxFinite,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: studentRowIndex == -1 ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue, width: 1.5),
+                  border: Border.all(color: studentRowIndex == -1 ? Colors.red : Colors.blue, width: 1.5),
                 ),
                 child: Text(
-                  'اسم الطالب: $studentName',
-                  style: const TextStyle(fontSize: 16, color: Colors.blue, fontWeight: FontWeight.bold),
+                  studentRowIndex == -1 ? 'تنبيه: رقم الجلوس غير متطابق بالإكسيل' : 'اسم الطالب المستهدف: $studentName',
+                  style: TextStyle(fontSize: 16, color: studentRowIndex == -1 ? Colors.red : Colors.blue, fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: 10),
-              Text('المادة: $selectedSubject', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('المادة المستهدفة: $selectedSubject', style: const TextStyle( Bertram: true, fontWeight: FontWeight.bold)),
               const SizedBox(height: 15),
-              const Text('الدرجة المقروءة (تستطيع تعديلها فوراً إذا لم تكن دقيقة لخط اليد):'),
+              const Text('أدخل أو عَدّل الدرجة المرصودة ورقياً:'),
               const SizedBox(height: 6),
               TextField(
                 controller: gradeController,
@@ -175,10 +171,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.pop(context);
                 cameraController.start(); 
               },
-              child: const Text('إلغاء وتخطي الورقة', style: TextStyle(color: Colors.red)),
+              child: const Text('إلغاء وتخطي الورقة', style: TextStyle( Bertram: true, color: Colors.red)),
             ),
             ElevatedButton(
-              onPressed: () async {
+              onPressed: studentRowIndex == -1 ? null : () async {
                 String finalGrade = gradeController.text.trim();
                 if (finalGrade.isNotEmpty) {
                   await saveGradeToExcel(cleanScannedQR, studentRowIndex, finalGrade);
@@ -197,9 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // حل مشكلة عدم الحفظ نهائياً عبر إجبار الكتابة القاطعة على الذاكرة
+  // دالة الحفظ الذكية والنهائية التي تخرج الملف مباشرة للتنزيلات وتدعم أندرويد الحديث
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
-    if (excel == null || sheetName == null || excelFilePath == null) return;
+    if (excel == null || sheetName == null) return;
 
     var table = excel!.tables[sheetName];
     if (table == null) return;
@@ -217,33 +213,33 @@ class _HomeScreenState extends State<HomeScreen> {
         _scannedRecords.add(recordKey);
       });
 
+      // حفظ البايتات المعدلة
       var fileBytes = excel!.save();
       
       if (fileBytes != null) {
-        // كتابة التحديث فوراً في مسار الملف الأصلي المفتوح
-        final file = File(excelFilePath!);
-        await file.writeAsBytes(fileBytes, flush: true);
-
-        // إنشاء نسخة احتياطية آمنة في مجلد المستندات لتفادي قيود الحماية في أندرويد
-        final outputDir = await getExternalStorageDirectory();
-        if (outputDir != null) {
-          String backupPath = "${outputDir.path}/نسخة_الكنترول_المحدثة.xlsx";
-          final backupFile = File(backupPath);
-          await backupFile.writeAsBytes(fileBytes, flush: true);
-        }
+        String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        String finalFileName = "كنترول_${selectedSubject}_تحديث_$timestamp";
         
+        // إرسال وحفظ الملف مباشرة في مجلد الـ Downloads العام على الهاتف بشكل مرئي وقاطع
+        await FileSaver.instance.saveFile(
+          name: finalFileName,
+          bytes: Uint8List.fromList(fileBytes),
+          ext: "xlsx",
+          mimeType: MimeType.microsoftExcel,
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم حفظ واعتماد الدرجة ($grade) بنجاح في الإكسيل!'),
+            content: Text('✅ تم رصد الدرجة ($grade) بنجاح وتصدير ملف محدث للملفات المرفوعة!'),
             backgroundColor: Colors.green.shade800,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('خطأ في صلاحيات نظام التشغيل أثناء الحفظ: $e'),
+          content: Text('❌ خطأ أثناء معالجة وحفظ البايتات: $e'),
           backgroundColor: Colors.red.shade900,
         ),
       );
@@ -296,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("خطأ أثناء قراءة ملف الإكسيل: $e")),
+        SnackBar(content: Text("خطأ قراءة الكنترول: $e")),
       );
     }
   }
@@ -309,9 +305,19 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام الرصد الذكي المستقر v3.1'),
+          title: const Text('نظام أبو الخضر للرصد الذكي v3.2'),
           centerTitle: true,
           elevation: 2,
+          actions: [
+            IconButton(
+              icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+              onPressed: () {
+                MyApp.of(context)?.changeTheme(
+                  isDark ? ThemeMode.light : ThemeMode.dark,
+                );
+              },
+            )
+          ],
         ),
         body: Column(
           children: [
@@ -329,7 +335,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               ? (isDark ? Colors.blueGrey.shade800 : Colors.blue.shade50)
                               : (isDark ? Colors.green.shade900 : Colors.green.shade50),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: excelFilePath == null ? Colors.blue.shade300 : Colors.green.shade300, width: 1.5),
+                          border: Border.all(
+                            color: excelFilePath == null ? Colors.blue.shade300 : Colors.green.shade300,
+                            width: 1.5,
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -338,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                excelFilePath == null ? "تحديد ملف الإكسيل الرئيسي" : "الملف نشط وجاهز ومحمي للحفظ",
+                                excelFilePath == null ? "تحديد ملف الإكسيل الرئيسي" : "تم تحميل الكنترول بنجاح",
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -359,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       children: [
                         const Text("أوراق مرصودة", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                        Text("$currentSubjectCount", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple)),
+                        Text("$currentSubjectCount", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.purple.shade200 : Colors.purple)),
                       ],
                     ),
                   ),
@@ -375,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.all(12.0),
                     child: Row(
                       children: [
-                        const Text("المادة النشطة حالياً:", style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text("المادة النشطة حالياً:", style: TextStyle( Bertram: true, fontWeight: FontWeight.bold)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Container(
@@ -423,13 +432,20 @@ class _HomeScreenState extends State<HomeScreen> {
                               child: Container(
                                 width: 260,
                                 height: 110,
-                                decoration: BoxDecoration(border: Border.all(color: Colors.blue, width: 2.5), borderRadius: BorderRadius.circular(12)),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.blue.shade400, width: 2.5),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
                             ),
                           ],
                         )
                       : const Center(
-                          child: Text("اضغط على الزر السفلي لبدء الكاميرا والرصد الآمن.", style: TextStyle(color: Colors.white), textAlign: TextAlign.center),
+                          child: Text(
+                            "اضغط على الزر السفلي لبدء الكاميرا والرصد الفعلي المباشر المحدث.",
+                            style: TextStyle(color: Colors.white),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                 ),
               ),
@@ -465,8 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
-    // استخدام الدالة الصحيحة والمتوافقة مع الإصدارات الحديثة لمنع فشل الـ Build
-    textRecognizer.close(); 
+    textRecognizer.close();
     super.dispose();
   }
 }
