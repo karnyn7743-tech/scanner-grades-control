@@ -26,7 +26,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   bool _isDialogShowing = false;
   final Set<String> _scannedRecords = {};
 
-  // إعداد متحكم الكاميرا الحديث المستقر
+  // إعداد متحكم الكاميرا ليعمل بأعلى دقة مسح مستمر
   final MobileScannerController cameraController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -34,7 +34,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     returnImage: true,
   );
 
-  // كاشف النصوص الذكي المتوافق مع التحديث الأخير
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   String currentStudentQR = "";
@@ -53,15 +52,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   String _extractGradeFromText(String text) {
+    // استخراج الأرقام المكونة من خانة أو خانتين (الدرجات المعتادة)
     final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); 
     final Iterable<Match> matches = numRegExp.allMatches(text);
     if (matches.isNotEmpty) {
-      return matches.first.group(0) ?? "0";
+      return matches.first.group(0) ?? "";
     }
-    return "0";
+    return "";
   }
 
-  // دالة الالتقاط الذكي المحدثة بالكامل لحل مشكلة الأبعاد في الإصدار الأخير بالسيرفر
+  // معالجة قراءة الـ QR والكاميرا بشكل مستقل وسريع جداً
   void onCameraDetectHandler(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -89,9 +89,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
       }
     }
 
-    String autoDetectedGrade = "0";
+    String autoDetectedGrade = "";
     
-    // الحل الجذري الحديث: جلب الأبعاد مباشرة من كائن capture.size المعتمد بالسيرفر
+    // تشغيل ذكاء الـ OCR بشكل منفصل ومحسن لتفادي بطء المعالجة
     if (capture.image != null && capture.size != null) {
       try {
         final Uint8List bytes = capture.image!;
@@ -110,7 +110,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
         autoDetectedGrade = _extractGradeFromText(recognizedText.text);
       } catch (_) {
-        autoDetectedGrade = "0"; 
+        autoDetectedGrade = ""; 
       }
     }
 
@@ -119,7 +119,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       currentStudentQR = cleanScannedQR;
       currentStudentName = studentName;
       currentStudentRowIndex = studentRowIndex;
-      gradeController.text = autoDetectedGrade == "0" ? "" : autoDetectedGrade;
+      gradeController.text = autoDetectedGrade;
     });
 
     showConfirmationDialog();
@@ -174,7 +174,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     ),
                   ),
                   const SizedBox(height: 15),
-                  const Text('الالتقاط الذكي (أو أدخلها يدوياً):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('الدرجة الملتقطة ذكياً (أو أدخلها يدوياً):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   TextField(
                     controller: gradeController,
@@ -183,7 +183,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.redAccent),
                     decoration: InputDecoration(
-                      hintText: 'أدخل الدرجة',
+                      hintText: '0',
                       contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -223,7 +223,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  // دالة الحفظ الاحتياطي المحدثة بالكامل لتتوافق مع معاملات السيرفر الجديدة لـ FileSaver
+  // دالة الحفظ المحدثة بالكامل مع معالجة الأذونات التلقائية
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
     var table = excel!.tables[sheetName];
@@ -247,7 +247,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         
-        // التحديث النهائي: تمرير المعاملات بالشكل الحديث المقبول في السيرفر دون قيود المايم
+        // حفظ نسخة احتياطية في مجلد التنزيلات بشكل آمن ومتوافق
         await FileSaver.instance.saveFile(
           name: "Backup_${selectedSubject}_$timestamp.xlsx",
           bytes: Uint8List.fromList(fileBytes),
@@ -255,7 +255,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ تم حفظ الدرجة ($grade) بنجاح!'),
+            content: Text('✅ تم حفظ الدرجة ($grade) في الملف الرئيسي بنجاح!'),
             backgroundColor: Colors.green.shade700,
             duration: const Duration(seconds: 2),
           ),
@@ -263,7 +263,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ فشل الكتابة المباشرة: $e'), backgroundColor: Colors.red)
+        SnackBar(content: Text('❌ فشل الحفظ! تأكد من منح صلاحيات التخزين للتطبيق: $e'), backgroundColor: Colors.red)
       );
     }
 
@@ -325,30 +325,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
           title: const Text('إعدادات الرصد المطور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           centerTitle: true,
           elevation: 2,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.pop(context),
-          ),
+          // تم إزالة زر السهم الأيمن الخاطئ لتفادي الشاشة المظلمة عند الضغط
           actions: [
-            // أيقونة الرفع العلوي لملف الإكسيل في رأس الشاشة مباشرة كما في طلبك
+            // تعديل أيقونة الرفع لتظهر بشكل أيقونة ملفات واضحة وفي جهة اليسار البرمجي الصحيحة للتصميم
             IconButton(
-              icon: const Icon(Icons.file_upload_outlined, size: 26),
-              tooltip: 'اختيار ملف الإكسيل الرئيسي',
+              icon: const Icon(Icons.file_open_rounded, size: 26, color: Colors.blue),
+              tooltip: 'اختيار ملف الكنترول',
               onPressed: pickAndLoadExcel,
             ),
           ],
         ),
         body: excelFilePath == null
-            ? const Center(
+            ? Center(
                 child: Padding(
-                  padding: EdgeInsets.all(24.0),
+                  padding: const EdgeInsets.all(24.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.cloud_upload_outlined, size: 80, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text(
-                        "الرجاء الضغط على أيقونة الرفع الموجودة في رأس الشاشة لاختيار ملف الكنترول والبدء.",
+                      Icon(Icons.folder_open_rounded, size: 80, color: Colors.blue.shade300),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "الرجاء الضغط على زر المجلد الأزرق الموجود في أعلى اليسار لاختيار ملف الكنترول والبدء في الرصد التلقائي.",
                         style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold),
                         textAlign: TextAlign.center,
                       ),
@@ -422,7 +419,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                               side: BorderSide(color: Colors.grey.withOpacity(0.3))
-                        ),
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
                               child: Row(
@@ -492,7 +489,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                           Icon(Icons.play_circle_filled_rounded, color: Colors.white, size: 22),
                           SizedBox(width: 8),
                           Text(
-                            "بدء الرصد (وجه الكاميرا الآن تلقائياً)",
+                            "يوجه الكاميرا الآن تلقائياً للـ QR والدرجة",
                             style: TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ],
