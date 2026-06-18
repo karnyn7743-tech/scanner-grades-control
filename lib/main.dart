@@ -91,15 +91,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', ' ').replaceAll('\r', ' ');
   }
 
-  // تطوير دالة استخراج الدرجة لضمان قراءة الخط اليدوي بدقة وتجنب تصفير الخانة
+  // تحديث دالة استخراج الدرجة لفلترة الخط اليدوي بذكاء ومنع التصفير التلقائي
   String _extractGradeFromText(String text) {
     final String clean = _cleanText(text);
-    // البحث عن أي أرقام مكونة من خانة أو خانتين (مثل الدرجات من 0 إلى 99)
+    // البحث عن الأرقام المكونة من خانة أو خانتين فقط (تخطي الرموز الطويلة أو النصوص العشوائية)
     final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); 
     final Iterable<Match> matches = numRegExp.allMatches(clean);
     
     if (matches.isNotEmpty) {
-      // نأخذ الرقم الأكثر وضوحاً والذي لا يكون صفراً مطلقاً إذا وُجدت أرقام أخرى
+      // تفضيل الأرقام الفعلية المكتوبة وتخطي الصفر المنفرد إذا وجدت خيارات أخرى
       for (var match in matches) {
         String found = match.group(0) ?? "";
         if (found.isNotEmpty && found != "0") {
@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return matches.first.group(0) ?? "";
     }
-    return ""; // نتركها فارغة ليقوم الأستاذ بإدخالها يدوياً لو كانت غير واضحة بدلاً من وضع صفر يجبره على المسح
+    return ""; // تترك فارغة تماماً ليسهل عليك إدخالها يدوياً فوراً إذا تعذر رصدها
   }
 
   void onCameraDetectHandler(BarcodeCapture capture) async {
@@ -270,35 +270,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // إصلاح مشكلة الحفظ الفوري والدائم داخل ملف الإكسيل على الجوال
+  // تطبيق التعديل الآمن لعملية الحفظ وإجبار النظام على اعتماد التعديلات فوراً
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
     var table = excel!.tables[sheetName];
     if (table == null) return;
 
     try {
-      // 1. تحديث القيمة داخل كائن الـ Excel في الذاكرة
+      // 1. إسناد القيمة داخل الذاكرة
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
       ));
       cell.value = imgExcel.TextCellValue(grade);
 
-      // 2. تحديث واجهة المستخدم بعدد المواد المرصودة
       setState(() {
         _scannedRecords.add("${selectedSubject}_$studentId");
       });
 
-      // 3. تحويل الكائن إلى بايتات وحفظه فورياً داخل الملف الأصلي مع عمل تفريغ قسري للذاكرة (flush)
+      // 2. توليد البيانات الثنائية للملف المحدث
       var fileBytes = excel!.save();
       if (fileBytes != null) {
+        // 3. فرض الحفظ المباشر في المسار الرئيسي مع التطهير الفوري لمجرى البيانات (flush)
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // 4. حفظ نسخة احتياطية إضافية عبر مكتبة file_saver لضمان عدم ضياع البيانات
+        // 4. تأمين الحفظ في المجلدات العامة عبر الـ FileSaver كمسار موازي ومستقر
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         await FileSaver.instance.saveFile(
-          name: "Backup_${selectedSubject}_$timestamp",
+          name: "Control_Backup_${selectedSubject}_$timestamp",
           bytes: Uint8List.fromList(fileBytes),
           ext: "xlsx",
           mimeType: MimeType.microsoftExcel,
