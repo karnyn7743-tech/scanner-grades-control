@@ -1,3 +1,4 @@
+import 'scanner_screen.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -44,7 +45,7 @@ class _MyAppState extends State<MyApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
       ),
       themeMode: _themeMode,
-      home: const HomeScreen(),
+      home: const ScannerScreen(),
     );
   }
 }
