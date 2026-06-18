@@ -128,16 +128,20 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     String autoDetectedGrade = "0";
-    if (capture.image != null && capture.size.width > 0 && capture.size.height > 0) {
+    // تحديث التوافق مع الخصائص الحديثة لمكتبة mobile_scanner و جلب الأبعاد بشكل دقيق
+    if (capture.image != null && capture.width != null && capture.height != null) {
       try {
         final Uint8List bytes = capture.image!;
+        final double imageWidth = capture.width!.toDouble();
+        final double imageHeight = capture.height!.toDouble();
+
         final InputImage inputImage = InputImage.fromBytes(
           bytes: bytes,
           metadata: InputImageMetadata(
-            size: Size(capture.size.width, capture.size.height),
-            rotation: InputImageRotation.rotation0deg, // تم التعديل إلى الاسم الصحيح المتوافق مع حزمتك
+            size: Size(imageWidth, imageHeight),
+            rotation: InputImageRotation.rotation0deg, // تم التحديث إلى الصيغة المتوافقة الحديثة
             format: InputImageFormat.nv21,
-            bytesPerRow: capture.size.width.toInt(),
+            bytesPerRow: imageWidth.toInt(),
           ),
         );
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
@@ -170,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Row(
               children: [
                 Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
-                SizedBox(width: 10), // استبدال الكائن الخاطئ بـ SizedBox القياسي
+                SizedBox(width: 10), // تعديل الكلمة المطبعية إلى SizedBox القياسي الثابت
                 Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
@@ -277,12 +281,12 @@ class _HomeScreenState extends State<HomeScreen> {
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // تعديل الاستدعاء ليتوافق مع الإصدار 0.4.0 من مكتبة file_saver المحددة في مشروعك
+        // تحديث دالة الحفظ بالمعاملات المسماة المتوافقة مع أحدث إصدار من مكتبة file_saver
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         await FileSaver.instance.saveFile(
-          "Backup_${selectedSubject}_$timestamp",
-          Uint8List.fromList(fileBytes),
-          "xlsx",
+          name: "Backup_${selectedSubject}_$timestamp",
+          bytes: Uint8List.fromList(fileBytes),
+          ext: "xlsx",
           mimeType: MimeType.excel,
         );
 
@@ -497,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
-    _textRecognizer.close(); // التعديل لاستدعاء الدالة الصحيحة المتوافقة مع المكتبة المثبتة
+    _textRecognizer.close(); // استدعاء الدالة الحديثة المتوافقة مع آخر تحديث للحزمة لمنع تسريب الذاكرة
     super.dispose();
   }
 }
