@@ -91,15 +91,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', ' ').replaceAll('\r', ' ');
   }
 
-  // تحديث دالة استخراج الدرجة لفلترة الخط اليدوي بذكاء ومنع التصفير التلقائي
+  // دالة ذكية ومطورة لاستخراج الدرجة المكتوبة بخط اليد ومنع التصفير الوهمي
   String _extractGradeFromText(String text) {
     final String clean = _cleanText(text);
-    // البحث عن الأرقام المكونة من خانة أو خانتين فقط (تخطي الرموز الطويلة أو النصوص العشوائية)
+    // جلب الأرقام المكونة من خانة أو خانتين لتتناسب مع درجات الطلاب العادية
     final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); 
     final Iterable<Match> matches = numRegExp.allMatches(clean);
     
     if (matches.isNotEmpty) {
-      // تفضيل الأرقام الفعلية المكتوبة وتخطي الصفر المنفرد إذا وجدت خيارات أخرى
+      // البحث عن أول رقم حقيقي واضح وتجنب الصفر المفرد إذا كانت هناك أرقام أخرى مرافقة
       for (var match in matches) {
         String found = match.group(0) ?? "";
         if (found.isNotEmpty && found != "0") {
@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return matches.first.group(0) ?? "";
     }
-    return ""; // تترك فارغة تماماً ليسهل عليك إدخالها يدوياً فوراً إذا تعذر رصدها
+    return ""; // تُترك فارغة تماماً لتدخلها يدوياً بسرعة إن كانت الكتابة غير واضحة
   }
 
   void onCameraDetectHandler(BarcodeCapture capture) async {
@@ -181,11 +181,11 @@ class _HomeScreenState extends State<HomeScreen> {
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
-                SizedBox(width: 10), 
-                Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
+                const SizedBox(width: 10), 
+                Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
               ],
             ),
             content: SingleChildScrollView(
@@ -270,14 +270,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // تطبيق التعديل الآمن لعملية الحفظ وإجبار النظام على اعتماد التعديلات فوراً
+  // تعديل آمن وجذري لإتمام الحفظ الفوري وبناء نسخة احتياطية بشكل سليم ومستقر
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
     var table = excel!.tables[sheetName];
     if (table == null) return;
 
     try {
-      // 1. إسناد القيمة داخل الذاكرة
+      // 1. تعديل خلية المادة المحددة بالدرجة الجديدة في الذاكرة
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
@@ -288,14 +288,14 @@ class _HomeScreenState extends State<HomeScreen> {
         _scannedRecords.add("${selectedSubject}_$studentId");
       });
 
-      // 2. توليد البيانات الثنائية للملف المحدث
+      // 2. استخراج كائن البايتات الآمن لحفظ الملف المحدث
       var fileBytes = excel!.save();
       if (fileBytes != null) {
-        // 3. فرض الحفظ المباشر في المسار الرئيسي مع التطهير الفوري لمجرى البيانات (flush)
+        // 3. الكتابة المباشرة القسرية على الملف الأصلي مع التطهير الفوري (flush) لضمان اعتماد التعديل
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // 4. تأمين الحفظ في المجلدات العامة عبر الـ FileSaver كمسار موازي ومستقر
+        // 4. حفظ ملف احتياطي إضافي لتفادي قيود نظام التشغيل وحفظه داخل مجلدات الجهاز العامة
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         await FileSaver.instance.saveFile(
           name: "Control_Backup_${selectedSubject}_$timestamp",
@@ -496,12 +496,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.blue.withOpacity(0.3))
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.sync, color: Colors.blue, size: 18),
-                      SizedBox(width: 8),
-                      Text("وجه الكاميرا؛ سيتم لقط الـ QR والدرجة معاً تلقائياً.", style: TextStyle(fontSize: 11, color: Colors.blue)),
+                      Icon(Icons.sync, color: Colors.blue.shade700, size: 18),
+                      const SizedBox(width: 8),
+                      const Text("وجه الكاميرا؛ سيتم لقط الـ QR والدرجة معاً تلقائياً.", style: TextStyle(fontSize: 11, color: Colors.blue)),
                     ],
                   ),
                 ),
