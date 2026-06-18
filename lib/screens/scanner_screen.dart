@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:excel/excel.dart' as imgExcel;
+import 'package:flutter/material.dart';
+import 'package:excel/excel.dart' as excel_pub; // تجنب التداخل التسمياتي
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:file_saver/file_saver.dart';
@@ -15,497 +15,442 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  List<String> subjects = [];
-  String? selectedSubject;
-  int selectedSubjectColumnIndex = 4;
-  String? excelFilePath;
-  String? excelFileName;
-  imgExcel.Excel? excel;
-  String? sheetName;
+  String? _selectedFilePath;
+  Uint8List? _fileBytes;
+  excel_pub.Excel? _excel;
+  String? _selectedSheet;
+  List<String> _subjects = [];
+  String? _chosenSubject;
+  int _pickedSubjectIndex = 5; // العمود الخامس برمجياً لبدء المواد
 
-  bool _isDialogShowing = false;
-  final Set<String> _scannedRecords = {};
+  // بيانات الرصد الحالية
+  String? _currentStudentId;
+  String? _detectedGrade;
+  int _successCount = 0;
 
-  // إعداد متحكم الكاميرا ليعمل بأعلى دقة مسح مستمر
-  final MobileScannerController cameraController = MobileScannerController(
+  final MobileScannerController _scannerController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
-    torchEnabled: false,
-    returnImage: true,
   );
-
+  
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
-  String currentStudentQR = "";
-  String currentStudentName = "طالب غير مسجل";
-  int currentStudentRowIndex = -1;
-
-  final TextEditingController gradeController = TextEditingController();
-
-  int get currentSubjectCount {
-    if (selectedSubject == null) return 0;
-    return _scannedRecords.where((key) => key.startsWith("${selectedSubject}_")).length;
+  @override
+  void initState() {
+    super.initState();
+    // لضمان عمل الأيقونات والخطوط العربية بشكل طبيعي دون تداخل
   }
 
-  String _cleanText(String input) {
-    return input.trim().replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '');
+  @override
+  void dispose() {
+    _scannerController.dispose();
+    _textRecognizer.dispose();
+    super.dispose();
   }
 
-  String _extractGradeFromText(String text) {
-    // استخراج الأرقام المكونة من خانة أو خانتين (الدرجات المعتادة)
-    final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); 
-    final Iterable<Match> matches = numRegExp.allMatches(text);
-    if (matches.isNotEmpty) {
-      return matches.first.group(0) ?? "";
+  // 1. اختيار الملف وقراءة البيانات ديناميكياً
+  Future<void> _pickExcelFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        withData: true, // مهم جداً لجلب البايتات مباشرة للحفظ والتعديل
+      );
+
+      if (result != null && result.files.single.bytes != null) {
+        setState(() {
+          _selectedFilePath = result.files.single.path;
+          _fileBytes = result.files.single.bytes;
+          _excel = excel_pub.Excel.decodeBytes(_fileBytes!);
+          _selectedSheet = _excel!.tables.keys.first;
+        });
+
+        _loadSubjects();
+      }
+    } catch (e) {
+      _showSnackBar("خطأ أثناء تحميل الملف: $e");
     }
-    return "";
   }
 
-  // معالجة قراءة الـ QR والكاميرا بشكل مستقل وسريع جداً
-  void onCameraDetectHandler(BarcodeCapture capture) async {
-    if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
+  void _loadSubjects() {
+    if (_excel == null || _selectedSheet == null) return;
+    var sheet = _excel!.tables[_selectedSheet];
+    if (sheet == null || sheet.maxRows == 0) return;
 
-    final List<Barcode> barcodes = capture.barcodes;
-    if (barcodes.isEmpty || barcodes.first.rawValue == null) return;
+    // السطر الرابع (برمجياً كاندكس 3) يحتوي على أسماء المواد
+    var headerRow = sheet.rows[3];
+    List<String> foundSubjects = [];
 
-    String cleanScannedQR = _cleanText(barcodes.first.rawValue!);
-    if (cleanScannedQR.isEmpty) return;
+    for (int i = 5; i < headerRow.length; i++) {
+      var cellValue = headerRow[i]?.value;
+      if (cellValue != null) {
+        foundSubjects.add(cellValue.toString().trim());
+      }
+    }
 
-    var table = excel!.tables[sheetName];
-    if (table == null) return;
+    setState(() {
+      _subjects = foundSubjects;
+      if (_subjects.isNotEmpty) {
+        _chosenSubject = _subjects.first;
+        _pickedSubjectIndex = 5;
+      }
+    });
+  }
 
-    String studentName = "طالب غير مسجل";
-    int studentRowIndex = -1;
+  // 2. معالجة وتأمين الحفظ الفوري المباشر داخل الملف المختار
+  Future<void> _saveAndCommitExcel() async {
+    if (_excel == null || _selectedFilePath == null) return;
 
-    for (int i = 1; i < table.maxRows; i++) {
-      var qrCellValue = table.rows[i][3]?.value;
-      if (qrCellValue == null) continue;
+    try {
+      // تحويل نسخة الإكسيل الحالية المعدلة برمجياً إلى قائمة بايتات ثنائية جديدة
+      List<int>? updatedBytes = _excel!.encode();
+      if (updatedBytes == null) return;
+      Uint8List fileData = Uint8List.fromList(updatedBytes);
 
-      String cleanCellQR = _cleanText(qrCellValue.toString());
-      if (cleanCellQR == cleanScannedQR) {
-        studentRowIndex = i;
-        studentName = table.rows[i][1]?.value?.toString().trim() ?? "بدون اسم";
+      // الفكرة الأساسية: الكتابة المباشرة القسرية عبر نظام الملفات أولاً
+      final File physicalFile = File(_selectedFilePath!);
+      await physicalFile.writeAsBytes(fileData, flush: true);
+
+      // ثانياً: استدعاء دالة الحفظ الصارمة لضمان تحديث نظام التشغيل أندرويد للملف المختار
+      String fileNameWithExt = _selectedFilePath!.split('/').last;
+      String nameWithoutExt = fileNameWithExt.replaceAll(".xlsx", "");
+
+      await FileSaver.instance.saveFile(
+        name: nameWithoutExt,
+        bytes: fileData,
+        ext: "xlsx",
+        mimeType: MimeType.excel,
+      );
+
+      // تحديث البايتات المحلية في الذاكرة لتكون متطابقة ومتزامنة
+      setState(() {
+        _fileBytes = fileData;
+        _successCount++;
+      });
+
+      _showSnackBar("تم الحفظ والكتابة المباشرة على الملف بنجاح! 🎉");
+    } catch (e) {
+      _showSnackBar("فشل الحفظ المباشر: $e. جاري الحفظ كنسخة احتياطية...");
+      _backupSave(updatedBytes);
+    }
+  }
+
+  // حفظ احتياطي في حال قيود نظام أندرويد الصارمة على الملف الأصلي
+  Future<void> _backupSave(List<int>? bytes) async {
+    if (bytes == null) return;
+    try {
+      await FileSaver.instance.saveAs(
+        name: "نسخة_احتياطية_درجات",
+        bytes: Uint8List.fromList(bytes),
+        ext: "xlsx",
+        mimeType: MimeType.excel,
+      );
+    } catch (err) {
+      _showSnackBar("خطأ الحفظ الاحتياطي: $err");
+    }
+  }
+
+  // 3. دالة رصد الدرجة المباشرة وتعديل الخلية في ذاكرة الإكسيل
+  void _updateStudentGrade(String studentId, String grade) {
+    if (_excel == null || _selectedSheet == null) return;
+    var sheet = _excel!.tables[_selectedSheet];
+    if (sheet == null) return;
+
+    bool studentFound = false;
+
+    // البحث عن الطالب في العمود الثالث (الرقم الأكاديمي/المعرف) بدءاً من السطر الخامس
+    for (int i = 4; i < sheet.maxRows; i++) {
+      var cellValue = sheet.rows[i][2]?.value?.toString().trim();
+      if (cellValue == studentId) {
+        // تعديل خلية المادة المحددة للطالب المكتشف
+        var cellIndex = excel_pub.CellIndex.indexByColumnRow(
+          columnIndex: _pickedSubjectIndex,
+          rowIndex: i,
+        );
+        sheet.updateCell(cellIndex, excel_pub.CellValue.withValue(double.tryParse(grade) ?? grade));
+        studentFound = true;
         break;
       }
     }
 
-    String autoDetectedGrade = "";
-    
-    // تشغيل ذكاء الـ OCR بشكل منفصل ومحسن لتفادي بطء المعالجة
-    if (capture.image != null && capture.size != null) {
-      try {
-        final Uint8List bytes = capture.image!;
-        final double imageWidth = capture.size!.width;
-        final double imageHeight = capture.size!.height;
-
-        final InputImage inputImage = InputImage.fromBytes(
-          bytes: bytes,
-          metadata: InputImageMetadata(
-            size: Size(imageWidth, imageHeight),
-            rotation: InputImageRotation.rotation0deg,
-            format: InputImageFormat.nv21,
-            bytesPerRow: imageWidth.toInt(),
-          ),
-        );
-        final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
-        autoDetectedGrade = _extractGradeFromText(recognizedText.text);
-      } catch (_) {
-        autoDetectedGrade = ""; 
-      }
-    }
-
-    setState(() {
-      _isDialogShowing = true;
-      currentStudentQR = cleanScannedQR;
-      currentStudentName = studentName;
-      currentStudentRowIndex = studentRowIndex;
-      gradeController.text = autoDetectedGrade;
-    });
-
-    showConfirmationDialog();
-  }
-
-  void showConfirmationDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
-                SizedBox(width: 10),
-                Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Text('رقم الجلوس (QR): ', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      Text(currentStudentQR, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.maxFinite,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: currentStudentRowIndex == -1 ? Colors.red.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: currentStudentRowIndex == -1 ? Colors.red.shade400 : Colors.blue.shade400,
-                        width: 1.2
-                      ),
-                    ),
-                    child: Text(
-                      currentStudentRowIndex == -1 ? '🚨 رقم الجلوس هذا غير مدرج في كشف الإكسيل!' : '👤 الاسم: $currentStudentName',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: currentStudentRowIndex == -1 ? Colors.red.shade700 : Colors.blue.shade800
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 15),
-                  const Text('الدرجة الملتقطة ذكياً (أو أدخلها يدوياً):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: gradeController,
-                    keyboardType: TextInputType.number,
-                    autofocus: true,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.redAccent),
-                    decoration: InputDecoration(
-                      hintText: '0',
-                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _isDialogShowing = false;
-                  });
-                  Navigator.pop(context);
-                },
-                child: const Text('إلغاء وتخطي', style: TextStyle(color: Colors.red)),
-              ),
-              ElevatedButton.icon(
-                onPressed: currentStudentRowIndex == -1 ? null : () async {
-                  String enteredGrade = gradeController.text.trim();
-                  if (enteredGrade.isEmpty) enteredGrade = "0";
-                  Navigator.pop(context);
-                  await saveGradeToExcel(currentStudentQR, currentStudentRowIndex, enteredGrade);
-                },
-                icon: const Icon(Icons.save_rounded),
-                label: const Text('اعتماد وحفظ'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green.shade600,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // دالة الحفظ المحدثة بالكامل مع معالجة الأذونات التلقائية
-  Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
-    if (excel == null || sheetName == null || excelFilePath == null) return;
-    var table = excel!.tables[sheetName];
-    if (table == null) return;
-
-    try {
-      var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
-        columnIndex: selectedSubjectColumnIndex,
-        rowIndex: rowIndex,
-      ));
-      cell.value = imgExcel.TextCellValue(grade);
-
-      setState(() {
-        _scannedRecords.add("${selectedSubject}_$studentId");
-      });
-
-      var fileBytes = excel!.save();
-      if (fileBytes != null) {
-        final File originalFile = File(excelFilePath!);
-        await originalFile.writeAsBytes(fileBytes, flush: true);
-
-        String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-        
-        // حفظ نسخة احتياطية في مجلد التنزيلات بشكل آمن ومتوافق
-        await FileSaver.instance.saveFile(
-          name: "Backup_${selectedSubject}_$timestamp.xlsx",
-          bytes: Uint8List.fromList(fileBytes),
-        );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ تم حفظ الدرجة ($grade) في الملف الرئيسي بنجاح!'),
-            backgroundColor: Colors.green.shade700,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ فشل الحفظ! تأكد من منح صلاحيات التخزين للتطبيق: $e'), backgroundColor: Colors.red)
-      );
-    }
-
-    setState(() {
-      _isDialogShowing = false;
-    });
-  }
-
-  Future<void> pickAndLoadExcel() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom, 
-        allowedExtensions: ['xlsx', 'xls']
-      );
-      if (result != null && result.files.single.path != null) {
-        excelFilePath = result.files.single.path;
-        excelFileName = result.files.single.name;
-        var bytes = File(excelFilePath!).readAsBytesSync();
-        excel = imgExcel.Excel.decodeBytes(bytes);
-        sheetName = excel!.tables.keys.first;
-        var table = excel!.tables[sheetName];
-
-        if (table != null && table.maxRows > 0) {
-          var firstRow = table.rows.first;
-          List<String> extractedSubjects = [];
-
-          for (int i = 4; i < firstRow.length; i++) {
-            if (firstRow[i] != null) {
-              String cellValue = firstRow[i]!.value.toString().trim();
-              if (cellValue.isNotEmpty && cellValue != "null") {
-                extractedSubjects.add(cellValue);
-              }
-            }
-          }
-
-          setState(() {
-            subjects = extractedSubjects;
-            if (subjects.isNotEmpty) {
-              selectedSubject = subjects.first;
-              selectedSubjectColumnIndex = 4;
-            }
-            _scannedRecords.clear();
-          });
-        }
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ قراءة ملف الكنترول: $e")));
+    if (studentFound) {
+      // تشغيل عملية الحفظ المباشر فوراً عند الاعتماد والضغط
+      _saveAndCommitExcel();
+    } else {
+      _showSnackBar("عذراً، لم يتم العثور على الرقم الأكاديمي $studentId في الملف");
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('إعدادات الرصد المطور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          centerTitle: true,
-          elevation: 2,
-          // تم إزالة زر السهم الأيمن الخاطئ لتفادي الشاشة المظلمة عند الضغط
-          actions: [
-            // تعديل أيقونة الرفع لتظهر بشكل أيقونة ملفات واضحة وفي جهة اليسار البرمجي الصحيحة للتصميم
-            IconButton(
-              icon: const Icon(Icons.file_open_rounded, size: 26, color: Colors.blue),
-              tooltip: 'اختيار ملف الكنترول',
-              onPressed: pickAndLoadExcel,
-            ),
-          ],
-        ),
-        body: excelFilePath == null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.folder_open_rounded, size: 80, color: Colors.blue.shade300),
-                      const SizedBox(height: 16),
-                      const Text(
-                        "الرجاء الضغط على زر المجلد الأزرق الموجود في أعلى اليسار لاختيار ملف الكنترول والبدء في الرصد التلقائي.",
-                        style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : Column(
-                children: [
-                  // 1. حاوية اسم الملف وبجانبها مربع العداد الأرجواني المنبثق
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.green.shade300, width: 1),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.description, color: Colors.green, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    excelFileName ?? "ملف الكنترول الرئيسي",
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.purple.withOpacity(0.2) : Colors.purple.shade50,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.purple.shade300, width: 1.2),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text("المرصود", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple)),
-                              Text("$currentSubjectCount", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple)),
-                            ],
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                  
-                  // 2. كارد قائمة المواد المستخرجة ديناميكياً
-                  if (subjects.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(right: 4.0, bottom: 4.0),
-                            child: Text("اختر المادة الحالية للمسح:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          ),
-                          Card(
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: BorderSide(color: Colors.grey.withOpacity(0.3))
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.menu_book_rounded, color: Colors.blue, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: selectedSubject,
-                                      decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.zero),
-                                      isExpanded: true,
-                                      items: subjects.map((String sub) {
-                                        return DropdownMenuItem<String>(value: sub, child: Text(sub, style: const TextStyle(fontSize: 13)));
-                                      }).toList(),
-                                      onChanged: (String? val) {
-                                        setState(() {
-                                          selectedSubject = val;
-                                          int idx = subjects.indexOf(val!);
-                                          selectedSubjectColumnIndex = 4 + idx;
-                                        });
-                                      },
-                                    ),
-                                  )
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // 3. مساحة تشغيل الكاميرا الحية والمسح المستقر تلقائياً
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade800, width: 2),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: MobileScanner(
-                          controller: cameraController, 
-                          onDetect: onCameraDetectHandler,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // 4. الزر والشريط السفلي المثبت لبدء الرصد
-                  Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                          color: Colors.green.shade600,
-                          borderRadius: BorderRadius.circular(10),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
-                          ]
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.play_circle_filled_rounded, color: Colors.white, size: 22),
-                          SizedBox(width: 8),
-                          Text(
-                            "يوجه الكاميرا الآن تلقائياً للـ QR والدرجة",
-                            style: TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                ],
-              ),
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontFamily: 'Cairo', fontSize: 14)),
+        backgroundColor: Colors.blueGrey[900],
       ),
     );
   }
 
   @override
-  void dispose() {
-    cameraController.dispose();
-    _textRecognizer.close();
-    super.dispose();
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: const Text(
+            'إعدادات الرصد المطور',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+          ),
+          centerTitle: true,
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+        ),
+        body: _selectedFilePath == null ? _buildUploadState() : _buildScannerState(),
+      ),
+    );
+  }
+
+  // واجهة رفع واختيار الملف التلقائية (العربية بالكامل)
+  Widget _buildUploadState() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.folder_open_rounded, size: 100, color: Colors.blue[400]),
+            const SizedBox(height: 24),
+            const Text(
+              "الرجاء الضغط على زر المجلد أدناه\nلاختيار ملف الكنترول والبدء التلقائي.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, height: 1.5, color: Colors.black54),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: _pickExcelFile,
+              icon: const Icon(Icons.file_open_rounded, color: Colors.white),
+              label: const Text("اختيار ملف Excel الأصل", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // واجهة الرصد المتناسقة بعد اختيار الملف
+  Widget _buildScannerState() {
+    String fileName = _selectedFilePath!.split('/').last;
+
+    return Column(
+      children: [
+        // كارد التحكم العلوي المتناسق (اللاب توب)
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  // حاوية عداد الرصد المنبثقة بالأرجواني
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.purple[50], borderRadius: BorderRadius.circular(10)),
+                    child: Column(
+                      children: [
+                        const Text("المرصود", style: TextStyle(fontSize: 11, color: Colors.purple, fontWeight: FontWeight.bold)),
+                        Text("$_successCount", style: const TextStyle(fontSize: 18, color: Colors.purple, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(12)),
+                      child: Row(
+                        children: [
+                          Icon(Icons.gite_rounded, color: Colors.green[700], size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              fileName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Text("اختر المادة الحالية للمسح:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black70)),
+              ),
+              const SizedBox(height: 8),
+              // قائمة المواد الديناميكية المنسدلة
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey[50],
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _chosenSubject,
+                    isExpanded: true,
+                    icon: const Icon(Icons.arrow_drop_down_circle_rounded, color: Colors.blue),
+                    items: _subjects.map((String sub) {
+                      return DropdownMenuItem<String>(
+                        value: sub,
+                        child: Text(sub, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                      );
+                    }).toList(),
+                    onChanged: (newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _chosenSubject = newValue;
+                          // حساب الفهرس البرمجي الصحيح للعمود
+                          _pickedSubjectIndex = 5 + _subjects.indexOf(newValue);
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // الكاميرا ومساحة المسح الذكي
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), color: Colors.black),
+            clipBehavior: Clip.antiAlias,
+            child: MobileScanner(
+              controller: _scannerController,
+              onDetect: (capture) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
+                  final String code = barcodes.first.rawValue!;
+                  // منع التكرار الفوري بوقف المؤقت وعرض النافذة
+                  _scannerController.stop();
+                  _processScannedQRCode(code);
+                }
+              },
+            ),
+          ),
+        ),
+
+        // شريط الحالة السفلي الأخضر المتناسق
+        Container(
+          margin: const EdgeInsets.all(16),
+          width: double.infinity,
+          height: 55,
+          decoration: BoxDecoration(color: Colors.green[600], borderRadius: BorderRadius.circular(12)),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.camera_alt_outlined, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                "يوجه الكاميرا الآن تلقائياً للـ QR والدرجة",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+            ],
+          ),
+        )
+      ],
+    );
+  }
+
+  // معالجة البيانات وعرض نافذة الاعتماد الفورية
+  void _processScannedQRCode(String qrCodeValue) {
+    setState(() {
+      _currentStudentId = qrCodeValue.trim();
+      _detectedGrade = ""; // سنناقش قراءتها التلقائية في الخطوة القادمة
+    });
+
+    _showGradingDialog();
+  }
+
+  void _showGradingDialog() {
+    TextEditingController gradeController = TextEditingController(text: _detectedGrade);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.fact_check_rounded, color: Colors.blue),
+              SizedBox(width: 8),
+              Text("اعتماد رصد الدرجة", style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("رقم الطالب: $_currentStudentId", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text("المادة الحالية: $_chosenSubject", style: const TextStyle(fontSize: 14, color: Colors.black54)),
+              const SizedBox(height: 16),
+              const Text("الدرجة المستخرجة:", style: TextStyle(fontSize: 14, color: Colors.grey)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: gradeController,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.red),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.blue, width: 2), borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _scannerController.start(); // استئناف الكاميرا
+              },
+              child: const Text("إلغاء", style: TextStyle(color: Colors.grey, fontSize: 16)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                String finalGrade = gradeController.text.trim();
+                Navigator.pop(context);
+                if (finalGrade.isNotEmpty && _currentStudentId != null) {
+                  _updateStudentGrade(_currentStudentId!, finalGrade);
+                }
+                _scannerController.start(); // استئناف الكاميرا للعملية التالية
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text("حفظ واعتماد فوراً", style: TextStyle(color: Colors.white, fontSize: 16)),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
