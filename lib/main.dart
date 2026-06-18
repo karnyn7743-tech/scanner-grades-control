@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'scanner_screen.dart'; // 💡 استدعاء الشاشة المستقرة المتطورة
+import 'screens/scanner_screen.dart'; // 💡 استدعاء الشاشة المستقرة المتطورة
 
 void main() {
   runApp(const MyApp());
