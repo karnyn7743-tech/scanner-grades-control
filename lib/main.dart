@@ -91,15 +91,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return input.trim().replaceAll('\n', ' ').replaceAll('\r', ' ');
   }
 
-  // دالة ذكية ومطورة لاستخراج الدرجة المكتوبة بخط اليد ومنع التصفير الوهمي
   String _extractGradeFromText(String text) {
     final String clean = _cleanText(text);
-    // جلب الأرقام المكونة من خانة أو خانتين لتتناسب مع درجات الطلاب العادية
     final RegExp numRegExp = RegExp(r'\b\d{1,2}\b'); 
     final Iterable<Match> matches = numRegExp.allMatches(clean);
     
     if (matches.isNotEmpty) {
-      // البحث عن أول رقم حقيقي واضح وتجنب الصفر المفرد إذا كانت هناك أرقام أخرى مرافقة
       for (var match in matches) {
         String found = match.group(0) ?? "";
         if (found.isNotEmpty && found != "0") {
@@ -108,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return matches.first.group(0) ?? "";
     }
-    return ""; // تُترك فارغة تماماً لتدخلها يدوياً بسرعة إن كانت الكتابة غير واضحة
+    return ""; 
   }
 
   void onCameraDetectHandler(BarcodeCapture capture) async {
@@ -139,7 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     String autoDetectedGrade = "";
-    if (capture.image != null) {
+    // التحديث هنا: استخدام التسميات الجديدة للحزمة السابعة capture.size
+    if (capture.image != null && capture.size.width > 0 && capture.size.height > 0) {
       try {
         final Uint8List bytes = capture.image!;
         final double imageWidth = capture.size.width;
@@ -270,14 +268,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // تعديل آمن وجذري لإتمام الحفظ الفوري وبناء نسخة احتياطية بشكل سليم ومستقر
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
     var table = excel!.tables[sheetName];
     if (table == null) return;
 
     try {
-      // 1. تعديل خلية المادة المحددة بالدرجة الجديدة في الذاكرة
       var cell = table.cell(imgExcel.CellIndex.indexByColumnRow(
         columnIndex: selectedSubjectColumnIndex,
         rowIndex: rowIndex,
@@ -288,19 +284,17 @@ class _HomeScreenState extends State<HomeScreen> {
         _scannedRecords.add("${selectedSubject}_$studentId");
       });
 
-      // 2. استخراج كائن البايتات الآمن لحفظ الملف المحدث
       var fileBytes = excel!.save();
       if (fileBytes != null) {
-        // 3. الكتابة المباشرة القسرية على الملف الأصلي مع التطهير الفوري (flush) لضمان اعتماد التعديل
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // 4. حفظ ملف احتياطي إضافي لتفادي قيود نظام التشغيل وحفظه داخل مجلدات الجهاز العامة
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        
         await FileSaver.instance.saveFile(
-          name: "Control_Backup_${selectedSubject}_$timestamp",
-          bytes: Uint8List.fromList(fileBytes),
-          ext: "xlsx",
+          "Control_Backup_${selectedSubject}_$timestamp.xlsx",
+          Uint8List.fromList(fileBytes),
+          "xlsx",
           mimeType: MimeType.microsoftExcel,
         );
 
@@ -372,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد المستقر v5.6', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          title: const Text('نظام أبو الخضر للرصد المستقر v5.8', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           centerTitle: true,
           elevation: 2,
           actions: [
@@ -499,7 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.sync, color: Colors.blue.shade700, size: 18),
+                      const Icon(Icons.sync, color: Colors.blue, size: 18),
                       const SizedBox(width: 8),
                       const Text("وجه الكاميرا؛ سيتم لقط الـ QR والدرجة معاً تلقائياً.", style: TextStyle(fontSize: 11, color: Colors.blue)),
                     ],
