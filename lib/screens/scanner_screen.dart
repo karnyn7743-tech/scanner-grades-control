@@ -32,7 +32,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     facing: CameraFacing.back,
   );
   
-  // تعريف كاشف النصوص المتوافق
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   @override
@@ -43,10 +42,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void dispose() {
     _scannerController.dispose();
-    _textRecognizer.close(); // الإغلاق الصحيح المعتمد في الحزمة لمنع فشل البناء
+    _textRecognizer.close(); 
     super.dispose();
   }
 
+  // 1. دالة اختيار ملف الإكسيل وقراءته ديناميكياً
   Future<void> _pickExcelFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -94,6 +94,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     });
   }
 
+  // 2. حل مشكلة الـ FileSaver وتمرير المعاملات المسمّاة فقط المتوافقة مع السيرفر
   Future<void> _saveAndCommitExcel() async {
     if (_excel == null || _selectedFilePath == null) return;
 
@@ -102,16 +103,18 @@ class _ScannerScreenState extends State<ScannerScreen> {
     Uint8List fileData = Uint8List.fromList(updatedBytes);
 
     try {
+      // الكتابة الفيزيائية المباشرة على الملف الفعلي المختار
       final File physicalFile = File(_selectedFilePath!);
       await physicalFile.writeAsBytes(fileData, flush: true);
 
       String fileNameWithExt = _selectedFilePath!.split('/').last;
 
+      // استخدام المعاملات المسمّاة والامتداد الصريح للتوافق مع حزمة الحفظ القديمة
       await FileSaver.instance.saveFile(
-        fileNameWithExt,
-        fileData,
-        "",
-        mimeType: MimeType.MICROSOFT_EXCEL,
+        name: fileNameWithExt,
+        bytes: fileData,
+        ext: "xlsx",
+        mimeType: MimeType.other, 
       );
 
       setState(() {
@@ -129,16 +132,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _backupSave(Uint8List bytes) async {
     try {
       await FileSaver.instance.saveFile(
-        "نسخة_احتياطية_درجات.xlsx",
-        bytes,
-        "",
-        mimeType: MimeType.MICROSOFT_EXCEL,
+        name: "نسخة_احتياطية_درجات",
+        bytes: bytes,
+        ext: "xlsx",
+        mimeType: MimeType.other,
       );
     } catch (err) {
       _showSnackBar("خطأ الحفظ الاحتياطي: $err");
     }
   }
 
+  // 3. حل مشكلة تغليف النص داخل TextCellValue المتوافق تماماً مع إصدار excel: 4.0.6
   void _updateStudentGrade(String studentId, String grade) {
     if (_excel == null || _selectedSheet == null) return;
     var sheet = _excel!.tables[_selectedSheet];
@@ -154,7 +158,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
           rowIndex: i,
         );
         
-        sheet.updateCell(cellIndex, grade); 
+        // الصياغة الصارمة للتوافق مع نوع البيانات المطلوبة في نسختك القديمة بالسيرفر
+        sheet.updateCell(
+          cellIndex, 
+          excel_pub.TextCellValue(grade),
+        ); 
         studentFound = true;
         break;
       }
