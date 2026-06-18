@@ -39,7 +39,7 @@ class _MyAppState extends State<MyApp> {
       ),
       themeMode: _themeMode,
       // 💡 التوجيه السحري والمباشر لواجهة الرصد الجديدة والمستقرة 100%
-      home: const ScannerScreen(),
+      home: ScannerScreen(),
     );
   }
 }
