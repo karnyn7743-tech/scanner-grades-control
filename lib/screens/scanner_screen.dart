@@ -17,7 +17,8 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> {
   String? _excelPath;
-  Uint8List? _excelBytes; // للاحتفاظ بالملف في الذاكرة وتجنب قيود الحماية
+  Uint8List? _excelBytes; 
+  String? _originalFileName; // 1. متغير جديد للاحتفاظ باسم الملف الأصلي
   String? _scannedSecretCode;
   String? _studentName;
 
@@ -55,8 +56,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       if (result != null && result.files.single.path != null) {
         String path = result.files.single.path!;
-        var bytes = File(path).readAsBytesSync();
         
+        // التقاط اسم الملف الأصلي بدون الامتداد
+        String fileNameWithExtension = result.files.single.name;
+        String fileNameOnly = fileNameWithExtension.split('.').first;
+
+        var bytes = File(path).readAsBytesSync();
         var excel = my_excel.Excel.decodeBytes(bytes);
         String sheetName = excel.tables.keys.first;
         var sheet = excel.tables[sheetName]!;
@@ -76,7 +81,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
         setState(() {
           _excelPath = path;
-          _excelBytes = bytes; // حفظ البايتات للعمل عليها بأمان
+          _excelBytes = bytes; 
+          _originalFileName = fileNameOnly; // حفظ اسم الملف المختار
           _dynamicSubjects = extractedSubjects;
           if (extractedSubjects.isNotEmpty) {
             _selectedSubject = extractedSubjects.first;
@@ -110,12 +116,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
     String detectedSubjectNumber = "";
     String detectedGrade = "";
 
-    // حل مشكلة الـ OCR عبر تحويل البايتات وحل مشكلة دوران الكاميرا في أندرويد
     if (capture.image != null) {
       try {
         final Uint8List imgBytes = capture.image!;
-        
-        // حفظ الصورة في ملف مؤقت لضمان قيام مكتبة جوجل بقراءتها واكتشاف الزاوية تلقائياً
         final tempDir = await getTemporaryDirectory();
         final tempFile = File('${tempDir.path}/ocr_shot.png');
         await tempFile.writeAsBytes(imgBytes, flush: true);
@@ -138,13 +141,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
           detectedGrade = foundNumbers.first;
         }
         
-        // تنظيف الملف المؤقت
         if (await tempFile.exists()) {
           await tempFile.delete();
         }
-      } catch (_) {
-        detectedGrade = "";
-      }
+      } catch (_) {}
     }
 
     _verifyThreeZones(secretCode, detectedSubjectNumber, detectedGrade);
@@ -322,24 +322,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (updated) {
         var fileBytes = excel.save();
         if (fileBytes != null) {
-          // تحديث بايتات الذاكرة النشطة للتطبييق
           _excelBytes = Uint8List.fromList(fileBytes);
 
-          // تخطي حماية أندرويد عبر الحفظ المباشر في مجلد التنزيلات العام بجهازك
-          String cleanFileName = "Control_Updated_${_selectedSubject}";
-          
-          await FileSaver.instance.saveFile(
-            name: cleanFileName,
+          // 💡 التعديل المضمون: الحفظ التفاعلي عبر نظام أندرويد ليتيح لك اختيار المجلد
+          // واسم الملف سيكون نفس الاسم الأصلي الذي اخترته تماماً
+          String finalName = _originalFileName ?? "Control_Sheet";
+
+          await FileSaver.instance.saveAs(
+            name: finalName,
             bytes: _excelBytes!,
             ext: "xlsx",
             mimeType: MimeType.microsoftExcel,
           );
 
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ تم رصد درجة الطالب بنجاح وحفظ نسخة محدثة في التنزيلات!'),
-              backgroundColor: Colors.green.shade700,
-              duration: const Duration(seconds: 3),
+            const SnackBar(
+              content: Text('✅ تم تعديل الدرجة بنجاح! يرجى اختيار مكان الحفظ في النافذة الظاهرة.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
             ),
           );
 
