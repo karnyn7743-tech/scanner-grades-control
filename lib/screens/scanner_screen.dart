@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:excel/excel.dart' as excel_pub; // تجنب التداخل التسمياتي
+import 'package:excel/excel.dart' as excel_pub; 
 import 'package:file_picker/file_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:file_saver/file_saver.dart';
@@ -21,7 +21,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   String? _selectedSheet;
   List<String> _subjects = [];
   String? _chosenSubject;
-  int _pickedSubjectIndex = 5; // العمود الخامس برمجياً لبدء المواد
+  int _pickedSubjectIndex = 5; 
 
   // بيانات الرصد الحالية
   String? _currentStudentId;
@@ -38,13 +38,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void initState() {
     super.initState();
-    // لضمان عمل الأيقونات والخطوط العربية بشكل طبيعي دون تداخل
   }
 
   @override
   void dispose() {
     _scannerController.dispose();
-    _textRecognizer.dispose();
+    // إزالة دالة التخلص الفرعية لتفادي خطأ السيرفر
     super.dispose();
   }
 
@@ -54,7 +53,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
-        withData: true, // مهم جداً لجلب البايتات مباشرة للحفظ والتعديل
+        withData: true, 
       );
 
       if (result != null && result.files.single.bytes != null) {
@@ -77,7 +76,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     var sheet = _excel!.tables[_selectedSheet];
     if (sheet == null || sheet.maxRows == 0) return;
 
-    // السطر الرابع (برمجياً كاندكس 3) يحتوي على أسماء المواد
     var headerRow = sheet.rows[3];
     List<String> foundSubjects = [];
 
@@ -97,32 +95,29 @@ class _ScannerScreenState extends State<ScannerScreen> {
     });
   }
 
-  // 2. معالجة وتأمين الحفظ الفوري المباشر داخل الملف المختار
+  // 2. معالجة وتأمين الحفظ الفوري المباشر المتوافق مع إصدار حزمتك
   Future<void> _saveAndCommitExcel() async {
     if (_excel == null || _selectedFilePath == null) return;
 
-    try {
-      // تحويل نسخة الإكسيل الحالية المعدلة برمجياً إلى قائمة بايتات ثنائية جديدة
-      List<int>? updatedBytes = _excel!.encode();
-      if (updatedBytes == null) return;
-      Uint8List fileData = Uint8List.fromList(updatedBytes);
+    List<int>? updatedBytes = _excel!.encode();
+    if (updatedBytes == null) return;
+    Uint8List fileData = Uint8List.fromList(updatedBytes);
 
-      // الفكرة الأساسية: الكتابة المباشرة القسرية عبر نظام الملفات أولاً
+    try {
+      // تعديل فوري مباشر على الملف عبر المسار الفيزيائي
       final File physicalFile = File(_selectedFilePath!);
       await physicalFile.writeAsBytes(fileData, flush: true);
 
-      // ثانياً: استدعاء دالة الحفظ الصارمة لضمان تحديث نظام التشغيل أندرويد للملف المختار
+      // الحفظ المباشر المتوافق مع الإصدار القديم للحزمة (بدءاً من تمرير البايتات مباشرة بدون ل لـ ext)
       String fileNameWithExt = _selectedFilePath!.split('/').last;
-      String nameWithoutExt = fileNameWithExt.replaceAll(".xlsx", "");
 
       await FileSaver.instance.saveFile(
-        name: nameWithoutExt,
-        bytes: fileData,
-        ext: "xlsx",
-        mimeType: MimeType.excel,
+        fileNameWithExt,
+        fileData,
+        "",
+        mimeType: MimeType.MICROSOFT_EXCEL,
       );
 
-      // تحديث البايتات المحلية في الذاكرة لتكون متطابقة ومتزامنة
       setState(() {
         _fileBytes = fileData;
         _successCount++;
@@ -130,27 +125,26 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       _showSnackBar("تم الحفظ والكتابة المباشرة على الملف بنجاح! 🎉");
     } catch (e) {
-      _showSnackBar("فشل الحفظ المباشر: $e. جاري الحفظ كنسخة احتياطية...");
-      _backupSave(updatedBytes);
+      _showSnackBar("فشل الحفظ المباشر الفوري. جاري الحفظ كنسخة احتياطية...");
+      _backupSave(fileData);
     }
   }
 
-  // حفظ احتياطي في حال قيود نظام أندرويد الصارمة على الملف الأصلي
-  Future<void> _backupSave(List<int>? bytes) async {
-    if (bytes == null) return;
+  // حفظ احتياطي متوافق مع إصدار الحزمة الحالي لديك
+  Future<void> _backupSave(Uint8List bytes) async {
     try {
-      await FileSaver.instance.saveAs(
-        name: "نسخة_احتياطية_درجات",
-        bytes: Uint8List.fromList(bytes),
-        ext: "xlsx",
-        mimeType: MimeType.excel,
+      await FileSaver.instance.saveFile(
+        "نسخة_احتياطية_درجات.xlsx",
+        bytes,
+        "",
+        mimeType: MimeType.MICROSOFT_EXCEL,
       );
     } catch (err) {
       _showSnackBar("خطأ الحفظ الاحتياطي: $err");
     }
   }
 
-  // 3. دالة رصد الدرجة المباشرة وتعديل الخلية في ذاكرة الإكسيل
+  // 3. دالة رصد الدرجة المباشرة المتوافقة مع إصدار الإكسيل في مشروعك
   void _updateStudentGrade(String studentId, String grade) {
     if (_excel == null || _selectedSheet == null) return;
     var sheet = _excel!.tables[_selectedSheet];
@@ -158,23 +152,23 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     bool studentFound = false;
 
-    // البحث عن الطالب في العمود الثالث (الرقم الأكاديمي/المعرف) بدءاً من السطر الخامس
     for (int i = 4; i < sheet.maxRows; i++) {
       var cellValue = sheet.rows[i][2]?.value?.toString().trim();
       if (cellValue == studentId) {
-        // تعديل خلية المادة المحددة للطالب المكتشف
+        // استخدام الطريقة المتوافقة مباشرة مع إصدار الحزمة القديم لديك
         var cellIndex = excel_pub.CellIndex.indexByColumnRow(
           columnIndex: _pickedSubjectIndex,
           rowIndex: i,
         );
-        sheet.updateCell(cellIndex, excel_pub.CellValue.withValue(double.tryParse(grade) ?? grade));
+        
+        // التعديل المباشر المتوافق دون استخدام معالج الخلايا الحديث
+        sheet.updateCell(cellIndex, grade); 
         studentFound = true;
         break;
       }
     }
 
     if (studentFound) {
-      // تشغيل عملية الحفظ المباشر فوراً عند الاعتماد والضغط
       _saveAndCommitExcel();
     } else {
       _showSnackBar("عذراً، لم يتم العثور على الرقم الأكاديمي $studentId في الملف");
@@ -184,7 +178,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontFamily: 'Cairo', fontSize: 14)),
+        content: Text(message, style: const TextStyle(fontSize: 14)),
         backgroundColor: Colors.blueGrey[900],
       ),
     );
@@ -211,7 +205,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  // واجهة رفع واختيار الملف التلقائية (العربية بالكامل)
   Widget _buildUploadState() {
     return Center(
       child: SingleChildScrollView(
@@ -244,13 +237,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  // واجهة الرصد المتناسقة بعد اختيار الملف
   Widget _buildScannerState() {
     String fileName = _selectedFilePath!.split('/').last;
 
     return Column(
       children: [
-        // كارد التحكم العلوي المتناسق (اللاب توب)
         Container(
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.all(16),
@@ -263,7 +254,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
             children: [
               Row(
                 children: [
-                  // حاوية عداد الرصد المنبثقة بالأرجواني
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(color: Colors.purple[50], borderRadius: BorderRadius.circular(10)),
@@ -281,7 +271,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(12)),
                       child: Row(
                         children: [
-                          Icon(Icons.gite_rounded, color: Colors.green[700], size: 20),
+                          Icon(Icons.folder_shared_rounded, color: Colors.green[700], size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -299,10 +289,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
               const SizedBox(height: 16),
               const Align(
                 alignment: Alignment.centerRight,
-                child: Text("اختر المادة الحالية للمسح:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black70)),
+                child: Text("اختر المادة الحالية للمسح:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
               ),
               const SizedBox(height: 8),
-              // قائمة المواد الديناميكية المنسدلة
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
@@ -325,7 +314,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       if (newValue != null) {
                         setState(() {
                           _chosenSubject = newValue;
-                          // حساب الفهرس البرمجي الصحيح للعمود
                           _pickedSubjectIndex = 5 + _subjects.indexOf(newValue);
                         });
                       }
@@ -337,7 +325,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
           ),
         ),
 
-        // الكاميرا ومساحة المسح الذكي
         Expanded(
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -349,7 +336,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 final List<Barcode> barcodes = capture.barcodes;
                 if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
                   final String code = barcodes.first.rawValue!;
-                  // منع التكرار الفوري بوقف المؤقت وعرض النافذة
                   _scannerController.stop();
                   _processScannedQRCode(code);
                 }
@@ -358,7 +344,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
           ),
         ),
 
-        // شريط الحالة السفلي الأخضر المتناسق
         Container(
           margin: const EdgeInsets.all(16),
           width: double.infinity,
@@ -380,11 +365,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  // معالجة البيانات وعرض نافذة الاعتماد الفورية
   void _processScannedQRCode(String qrCodeValue) {
     setState(() {
       _currentStudentId = qrCodeValue.trim();
-      _detectedGrade = ""; // سنناقش قراءتها التلقائية في الخطوة القادمة
+      _detectedGrade = ""; 
     });
 
     _showGradingDialog();
@@ -432,7 +416,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                _scannerController.start(); // استئناف الكاميرا
+                _scannerController.start(); 
               },
               child: const Text("إلغاء", style: TextStyle(color: Colors.grey, fontSize: 16)),
             ),
@@ -443,7 +427,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 if (finalGrade.isNotEmpty && _currentStudentId != null) {
                   _updateStudentGrade(_currentStudentId!, finalGrade);
                 }
-                _scannerController.start(); // استئناف الكاميرا للعملية التالية
+                _scannerController.start(); 
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
               child: const Text("حفظ واعتماد فوراً", style: TextStyle(color: Colors.white, fontSize: 16)),
