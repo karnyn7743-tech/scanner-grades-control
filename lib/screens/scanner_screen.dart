@@ -26,7 +26,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   bool _isDialogShowing = false;
   final Set<String> _scannedRecords = {};
 
-  // إعداد متحكم الكاميرا الحديث
+  // إعداد متحكم الكاميرا الحديث المستقر
   final MobileScannerController cameraController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -34,7 +34,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     returnImage: true,
   );
 
-  // كاشف النصوص الذكي بآخر تحديث
+  // كاشف النصوص الذكي المتوافق مع التحديث الأخير
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   String currentStudentQR = "";
@@ -61,7 +61,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     return "0";
   }
 
-  // معالجة الالتقاط الذكي المتوافقة مع تحديثات سيرفر Codemagic الحديثة
+  // دالة الالتقاط الذكي المحدثة بالكامل لحل مشكلة الأبعاد في الإصدار الأخير بالسيرفر
   void onCameraDetectHandler(BarcodeCapture capture) async {
     if (_isDialogShowing || excel == null || sheetName == null || selectedSubject == null) return;
 
@@ -91,18 +91,18 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     String autoDetectedGrade = "0";
     
-    // حل مشكلة أبعاد الصورة وجلب البايتات بالإصدار المستقر الأخير لـ mobile_scanner
-    if (capture.image != null && capture.width != null && capture.height != null) {
+    // الحل الجذري الحديث: جلب الأبعاد مباشرة من كائن capture.size المعتمد بالسيرفر
+    if (capture.image != null && capture.size != null) {
       try {
         final Uint8List bytes = capture.image!;
-        final double imageWidth = capture.width!.toDouble();
-        final double imageHeight = capture.height!.toDouble();
+        final double imageWidth = capture.size!.width;
+        final double imageHeight = capture.size!.height;
 
         final InputImage inputImage = InputImage.fromBytes(
           bytes: bytes,
           metadata: InputImageMetadata(
             size: Size(imageWidth, imageHeight),
-            rotation: InputImageRotation.rotation0deg, // تم التحديث إلى المعامل الجديد rotation0deg
+            rotation: InputImageRotation.rotation0deg,
             format: InputImageFormat.nv21,
             bytesPerRow: imageWidth.toInt(),
           ),
@@ -137,7 +137,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             title: const Row(
               children: [
                 Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
-                SizedBox(width: 10), // استخدام ويدجت ثابت لمنع خطأ البناء الثابت
+                SizedBox(width: 10),
                 Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
@@ -223,7 +223,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  // دالة الحفظ الاحتياطي المعدلة بالكامل وفقاً للتحديث الأخير لـ file_saver مسمّاة بالكامل
+  // دالة الحفظ الاحتياطي المحدثة بالكامل لتتوافق مع معاملات السيرفر الجديدة لـ FileSaver
   Future<void> saveGradeToExcel(String studentId, int rowIndex, String grade) async {
     if (excel == null || sheetName == null || excelFilePath == null) return;
     var table = excel!.tables[sheetName];
@@ -245,13 +245,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // تعديل وسائط دالة saveFile لتصبح Named Arguments متوافقة 100% مع التحديث الأخير المتوفر بالسيرفر
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        
+        // التحديث النهائي: تمرير المعاملات بالشكل الحديث المقبول في السيرفر دون قيود المايم
         await FileSaver.instance.saveFile(
-          name: "Backup_${selectedSubject}_$timestamp",
+          name: "Backup_${selectedSubject}_$timestamp.xlsx",
           bytes: Uint8List.fromList(fileBytes),
-          ext: "xlsx",
-          mimeType: MimeType.excel,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -323,7 +322,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('إعدادات الرصد', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          title: const Text('إعدادات الرصد المطور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           centerTitle: true,
           elevation: 2,
           leading: IconButton(
@@ -331,7 +330,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             onPressed: () => Navigator.pop(context),
           ),
           actions: [
-            // أيقونة اختيار ورفع ملف الاكسيل في رأس الشاشة مباشرة لتعمل كزر علوي
+            // أيقونة الرفع العلوي لملف الإكسيل في رأس الشاشة مباشرة كما في طلبك
             IconButton(
               icon: const Icon(Icons.file_upload_outlined, size: 26),
               tooltip: 'اختيار ملف الإكسيل الرئيسي',
@@ -359,7 +358,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               )
             : Column(
                 children: [
-                  // 1. سطر اسم الملف وبجانبه مربع العداد الأرجواني المنبثق
+                  // 1. حاوية اسم الملف وبجانبها مربع العداد الأرجواني المنبثق
                   Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Row(
@@ -407,7 +406,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     ),
                   ),
                   
-                  // 2. قائمة اختيار المواد
+                  // 2. كارد قائمة المواد المستخرجة ديناميكياً
                   if (subjects.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
@@ -416,14 +415,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(right: 4.0, bottom: 4.0),
-                            child: Text("اختر المادة:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            child: Text("اختر المادة الحالية للمسح:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                           ),
                           Card(
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                               side: BorderSide(color: Colors.grey.withOpacity(0.3))
-                            ),
+                        ),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
                               child: Row(
@@ -455,7 +454,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       ),
                     ),
 
-                  // 3. مساحة الكاميرا الحية لتشغيل المسح التلقائي فوراً
+                  // 3. مساحة تشغيل الكاميرا الحية والمسح المستقر تلقائياً
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.all(12.0),
@@ -474,7 +473,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     ),
                   ),
 
-                  // 4. زر وشريط بدء الرصد التلقائي المثبت أسفل الشاشة
+                  // 4. الزر والشريط السفلي المثبت لبدء الرصد
                   Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Container(
@@ -509,7 +508,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void dispose() {
     cameraController.dispose();
-    _textRecognizer.close(); // الإغلاق المتوافق مع التحديث الحديث لمنع تسريب الذاكرة
+    _textRecognizer.close();
     super.dispose();
   }
 }
