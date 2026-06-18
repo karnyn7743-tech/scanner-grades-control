@@ -5,7 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:excel/excel.dart' as my_excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:file_saver/file_saver.dart'; // مضاف للحفظ الاحتياطي الآمن
+import 'package:file_saver/file_saver.dart'; 
+import 'package:path_provider/path_provider.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -16,6 +17,7 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> {
   String? _excelPath;
+  Uint8List? _excelBytes; // للاحتفاظ بالملف في الذاكرة وتجنب قيود الحماية
   String? _scannedSecretCode;
   String? _studentName;
 
@@ -26,7 +28,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   final TextEditingController _gradeController = TextEditingController();
   
-  // 1. تفعيل تجميع الصور (returnImage) لحل مشكلة توقف الـ OCR نهائياً على الجوال
   final MobileScannerController cameraController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -55,6 +56,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (result != null && result.files.single.path != null) {
         String path = result.files.single.path!;
         var bytes = File(path).readAsBytesSync();
+        
         var excel = my_excel.Excel.decodeBytes(bytes);
         String sheetName = excel.tables.keys.first;
         var sheet = excel.tables[sheetName]!;
@@ -74,6 +76,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
         setState(() {
           _excelPath = path;
+          _excelBytes = bytes; // حفظ البايتات للعمل عليها بأمان
           _dynamicSubjects = extractedSubjects;
           if (extractedSubjects.isNotEmpty) {
             _selectedSubject = extractedSubjects.first;
@@ -84,7 +87,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('✅ تم تحميل ملف الدرجات وتنشيط الفحص الثلاثي بنجاح!'),
+              content: Text('✅ تم قراءة كشف الكنترول وتنشيط الرصد بنجاح!'),
               backgroundColor: Colors.green),
         );
       }
@@ -96,7 +99,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) async {
-    if (_excelPath == null || _selectedSubject == null || _scannedSecretCode != null) return;
+    if (_excelBytes == null || _selectedSubject == null || _scannedSecretCode != null) return;
 
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isEmpty || barcodes.first.rawValue == null) return;
@@ -107,23 +110,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
     String detectedSubjectNumber = "";
     String detectedGrade = "";
 
-    // معالجة الـ OCR والتأكد من استقبال بايتات الصورة بشكل صحيح ومتوافق
-    if (capture.image != null && capture.size.width > 0 && capture.size.height > 0) {
+    // حل مشكلة الـ OCR عبر تحويل البايتات وحل مشكلة دوران الكاميرا في أندرويد
+    if (capture.image != null) {
       try {
-        final Uint8List bytes = capture.image!;
-        final double imageWidth = capture.size.width;
-        final double imageHeight = capture.size.height;
+        final Uint8List imgBytes = capture.image!;
+        
+        // حفظ الصورة في ملف مؤقت لضمان قيام مكتبة جوجل بقراءتها واكتشاف الزاوية تلقائياً
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/ocr_shot.png');
+        await tempFile.writeAsBytes(imgBytes, flush: true);
 
-        final InputImage inputImage = InputImage.fromBytes(
-          bytes: bytes,
-          metadata: InputImageMetadata(
-            size: Size(imageWidth, imageHeight),
-            rotation: InputImageRotation.rotation0deg, // مواءمة مسمى الدوران المتوافق حديثاً
-            format: InputImageFormat.nv21,
-            bytesPerRow: imageWidth.toInt(),
-          ),
-        );
-
+        final InputImage inputImage = InputImage.fromFile(tempFile);
         final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
 
         RegExp regExp = RegExp(r'[0-9٠-٩]+');
@@ -139,6 +136,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
           detectedGrade = foundNumbers.last;
         } else if (foundNumbers.length == 1) {
           detectedGrade = foundNumbers.first;
+        }
+        
+        // تنظيف الملف المؤقت
+        if (await tempFile.exists()) {
+          await tempFile.delete();
         }
       } catch (_) {
         detectedGrade = "";
@@ -163,8 +165,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       return;
     }
 
-    var bytes = File(_excelPath!).readAsBytesSync();
-    var excel = my_excel.Excel.decodeBytes(bytes);
+    var excel = my_excel.Excel.decodeBytes(_excelBytes!);
     String sheetName = excel.tables.keys.first;
     var sheet = excel.tables[sheetName]!;
 
@@ -295,11 +296,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   void _executeSaveIntoExcel() async {
-    if (_excelPath == null || _selectedSubject == null || _scannedSecretCode == null) return;
+    if (_excelBytes == null || _selectedSubject == null || _scannedSecretCode == null) return;
 
     try {
-      var bytes = File(_excelPath!).readAsBytesSync();
-      var excel = my_excel.Excel.decodeBytes(bytes);
+      var excel = my_excel.Excel.decodeBytes(_excelBytes!);
       String sheetName = excel.tables.keys.first;
       var sheet = excel.tables[sheetName]!;
 
@@ -309,7 +309,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
       for (int i = 1; i < sheet.maxRows; i++) {
         var row = sheet.rows[i];
         if (row.length > 3 && row[3]?.value?.toString().trim() == _scannedSecretCode) {
-          // المواءمة مع إصدار Excel الحديث للوصول المباشر والتعديل المستقر
           var cell = sheet.cell(my_excel.CellIndex.indexByColumnRow(
             columnIndex: subjectColumnIndex, 
             rowIndex: i
@@ -323,21 +322,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (updated) {
         var fileBytes = excel.save();
         if (fileBytes != null) {
-          // 1. الكتابة المباشرة الإجبارية مع الـ Flush لضمان تدوين البيانات على الجوال فورياً
-          final File originalFile = File(_excelPath!);
-          await originalFile.writeAsBytes(fileBytes, flush: true);
+          // تحديث بايتات الذاكرة النشطة للتطبييق
+          _excelBytes = Uint8List.fromList(fileBytes);
 
-          // 2. عمل نسخة احتياطية سحابية ومحلية آمنة في التنزيلات لعدم فقدان البيانات
-          String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+          // تخطي حماية أندرويد عبر الحفظ المباشر في مجلد التنزيلات العام بجهازك
+          String cleanFileName = "Control_Updated_${_selectedSubject}";
+          
           await FileSaver.instance.saveFile(
-            name: "stugrascan_Backup_${timestamp}.xlsx",
-            bytes: Uint8List.fromList(fileBytes),
+            name: cleanFileName,
+            bytes: _excelBytes!,
+            ext: "xlsx",
+            mimeType: MimeType.microsoftExcel,
           );
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ تم رصد وحفظ درجة الطالب بنجاح! الدرجة: ${_gradeController.text}'),
-              backgroundColor: Colors.green.shade700
+              content: Text('✅ تم رصد درجة الطالب بنجاح وحفظ نسخة محدثة في التنزيلات!'),
+              backgroundColor: Colors.green.shade700,
+              duration: const Duration(seconds: 3),
             ),
           );
 
@@ -351,7 +353,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ فشل حفظ البيانات في الملف: $e'), backgroundColor: Colors.red),
+        SnackBar(content: Text('❌ فشل حفظ البيانات: $e'), backgroundColor: Colors.red),
       );
       setState(() { _scannedSecretCode = null; });
     }
@@ -377,7 +379,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         ),
         body: Column(
           children: [
-            if (_excelPath == null)
+            if (_excelBytes == null)
               Container(
                 color: Colors.red[50],
                 width: double.infinity,
