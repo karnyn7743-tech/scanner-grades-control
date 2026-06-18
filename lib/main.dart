@@ -136,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     String autoDetectedGrade = "";
-    // التحديث هنا: استخدام التسميات الجديدة للحزمة السابعة capture.size
+    // التوافق مع مخرجات الحزمة السابعة المحدثة لحساب الحجم والأبعاد
     if (capture.image != null && capture.size.width > 0 && capture.size.height > 0) {
       try {
         final Uint8List bytes = capture.image!;
@@ -147,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bytes: bytes,
           metadata: InputImageMetadata(
             size: Size(imageWidth, imageHeight),
-            rotation: InputImageRotation.rotation0deg, 
+            rotation: InputImageRotation.rotation0deg, // ضبط مسمى الدوران المتوافق حديثاً
             format: InputImageFormat.nv21,
             bytesPerRow: imageWidth.toInt(),
           ),
@@ -291,11 +291,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         
+        // تعديل صياغة الدالة لتتوافق 100% مع أحدث إصدار من FileSaver وتجنب وسائط تحديد الموقع العشوائية
         await FileSaver.instance.saveFile(
-          "Control_Backup_${selectedSubject}_$timestamp.xlsx",
-          Uint8List.fromList(fileBytes),
-          "xlsx",
-          mimeType: MimeType.microsoftExcel,
+          name: "Control_Backup_${selectedSubject}_$timestamp.xlsx",
+          bytes: Uint8List.fromList(fileBytes),
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -366,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد المستقر v5.8', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          title: const Text('نظام أبو الخضر للرصد المستقر v5.9', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           centerTitle: true,
           elevation: 2,
           actions: [
