@@ -23,7 +23,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
   String? _chosenSubject;
   int _pickedSubjectIndex = 5; 
 
-  // بيانات الرصد الحالية
   String? _currentStudentId;
   String? _detectedGrade;
   int _successCount = 0;
@@ -33,6 +32,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     facing: CameraFacing.back,
   );
   
+  // تعريف كاشف النصوص المتوافق
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   @override
@@ -43,11 +43,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void dispose() {
     _scannerController.dispose();
-    // إزالة دالة التخلص الفرعية لتفادي خطأ السيرفر
+    _textRecognizer.close(); // الإغلاق الصحيح المعتمد في الحزمة لمنع فشل البناء
     super.dispose();
   }
 
-  // 1. اختيار الملف وقراءة البيانات ديناميكياً
   Future<void> _pickExcelFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -95,7 +94,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     });
   }
 
-  // 2. معالجة وتأمين الحفظ الفوري المباشر المتوافق مع إصدار حزمتك
   Future<void> _saveAndCommitExcel() async {
     if (_excel == null || _selectedFilePath == null) return;
 
@@ -104,11 +102,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
     Uint8List fileData = Uint8List.fromList(updatedBytes);
 
     try {
-      // تعديل فوري مباشر على الملف عبر المسار الفيزيائي
       final File physicalFile = File(_selectedFilePath!);
       await physicalFile.writeAsBytes(fileData, flush: true);
 
-      // الحفظ المباشر المتوافق مع الإصدار القديم للحزمة (بدءاً من تمرير البايتات مباشرة بدون ل لـ ext)
       String fileNameWithExt = _selectedFilePath!.split('/').last;
 
       await FileSaver.instance.saveFile(
@@ -125,12 +121,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       _showSnackBar("تم الحفظ والكتابة المباشرة على الملف بنجاح! 🎉");
     } catch (e) {
-      _showSnackBar("فشل الحفظ المباشر الفوري. جاري الحفظ كنسخة احتياطية...");
+      _showSnackBar("فشل الحفظ المباشر. جاري الحفظ كنسخة احتياطية...");
       _backupSave(fileData);
     }
   }
 
-  // حفظ احتياطي متوافق مع إصدار الحزمة الحالي لديك
   Future<void> _backupSave(Uint8List bytes) async {
     try {
       await FileSaver.instance.saveFile(
@@ -144,7 +139,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
   }
 
-  // 3. دالة رصد الدرجة المباشرة المتوافقة مع إصدار الإكسيل في مشروعك
   void _updateStudentGrade(String studentId, String grade) {
     if (_excel == null || _selectedSheet == null) return;
     var sheet = _excel!.tables[_selectedSheet];
@@ -155,13 +149,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
     for (int i = 4; i < sheet.maxRows; i++) {
       var cellValue = sheet.rows[i][2]?.value?.toString().trim();
       if (cellValue == studentId) {
-        // استخدام الطريقة المتوافقة مباشرة مع إصدار الحزمة القديم لديك
         var cellIndex = excel_pub.CellIndex.indexByColumnRow(
           columnIndex: _pickedSubjectIndex,
           rowIndex: i,
         );
         
-        // التعديل المباشر المتوافق دون استخدام معالج الخلايا الحديث
         sheet.updateCell(cellIndex, grade); 
         studentFound = true;
         break;
