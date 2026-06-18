@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:excel/excel.dart' as my_excel;
 import 'package:file_picker/file_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:file_saver/file_saver.dart'; // مضاف للحفظ الاحتياطي الآمن
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -20,9 +22,18 @@ class _ScannerScreenState extends State<ScannerScreen> {
   List<String> _dynamicSubjects = [];
   String? _selectedSubject;
   int _selectedSubjectIndexInFile = -1;
+  int _scannedRecordsCount = 0;
 
   final TextEditingController _gradeController = TextEditingController();
-  final MobileScannerController cameraController = MobileScannerController();
+  
+  // 1. تفعيل تجميع الصور (returnImage) لحل مشكلة توقف الـ OCR نهائياً على الجوال
+  final MobileScannerController cameraController = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    facing: CameraFacing.back,
+    torchEnabled: false,
+    returnImage: true, 
+  );
+
   final TextRecognizer _textRecognizer =
       TextRecognizer(script: TextRecognitionScript.latin);
 
@@ -35,94 +46,106 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   void _pickExcelFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-    );
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+      );
 
-    if (result != null && result.files.single.path != null) {
-      String path = result.files.single.path!;
-      var bytes = File(path).readAsBytesSync();
-      var excel = my_excel.Excel.decodeBytes(bytes);
-      String sheetName = excel.tables.keys.first;
-      var sheet = excel.tables[sheetName]!;
+      if (result != null && result.files.single.path != null) {
+        String path = result.files.single.path!;
+        var bytes = File(path).readAsBytesSync();
+        var excel = my_excel.Excel.decodeBytes(bytes);
+        String sheetName = excel.tables.keys.first;
+        var sheet = excel.tables[sheetName]!;
 
-      List<String> extractedSubjects = [];
-      if (sheet.maxRows > 0) {
-        var headerRow = sheet.rows[0];
-        for (int i = 4; i < headerRow.length; i++) {
-          var cellValue = headerRow[i]?.value?.toString();
-          if (cellValue != null && cellValue.trim().isNotEmpty) {
-            extractedSubjects.add(cellValue.trim());
+        List<String> extractedSubjects = [];
+        if (sheet.maxRows > 0) {
+          var headerRow = sheet.rows[0];
+          for (int i = 4; i < headerRow.length; i++) {
+            var cellValue = headerRow[i]?.value?.toString();
+            if (cellValue != null && cellValue.trim().isNotEmpty) {
+              extractedSubjects.add(cellValue.trim());
+            }
           }
         }
+
+        if (!mounted) return;
+
+        setState(() {
+          _excelPath = path;
+          _dynamicSubjects = extractedSubjects;
+          if (extractedSubjects.isNotEmpty) {
+            _selectedSubject = extractedSubjects.first;
+            _selectedSubjectIndexInFile = 1;
+          }
+          _scannedRecordsCount = 0; 
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('✅ تم تحميل ملف الدرجات وتنشيط الفحص الثلاثي بنجاح!'),
+              backgroundColor: Colors.green),
+        );
       }
-
-      if (!mounted) return;
-
-      setState(() {
-        _excelPath = path;
-        _dynamicSubjects = extractedSubjects;
-        if (extractedSubjects.isNotEmpty) {
-          _selectedSubject = extractedSubjects.first;
-          _selectedSubjectIndexInFile = 1;
-        }
-      });
-
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('تم تحميل ملف الدرجات وتنشيط الفحص الثلاثي الأمني!')),
+        SnackBar(content: Text('❌ خطأ في قراءة ملف الإكسيل: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) async {
-    if (_excelPath == null || _selectedSubject == null) return;
+    if (_excelPath == null || _selectedSubject == null || _scannedSecretCode != null) return;
 
     final List<Barcode> barcodes = capture.barcodes;
-    for (final barcode in barcodes) {
-      if (barcode.rawValue != null && _scannedSecretCode == null) {
-        String secretCode = barcode.rawValue!;
+    if (barcodes.isEmpty || barcodes.first.rawValue == null) return;
 
-        await cameraController.stop();
+    String secretCode = barcodes.first.rawValue!.trim().replaceAll(' ', '');
+    if (secretCode.isEmpty) return;
 
-        String detectedSubjectNumber = "";
-        String detectedGrade = "";
+    String detectedSubjectNumber = "";
+    String detectedGrade = "";
 
-        if (capture.image != null) {
-          final InputImage inputImage = InputImage.fromBytes(
-            bytes: capture.image!,
-            metadata: InputImageMetadata(
-              size: Size(capture.size.width, capture.size.height),
-              rotation: InputImageRotation.rotation0deg,
-              format: InputImageFormat.nv21,
-              bytesPerRow: capture.size.width.toInt(),
-            ),
-          );
+    // معالجة الـ OCR والتأكد من استقبال بايتات الصورة بشكل صحيح ومتوافق
+    if (capture.image != null && capture.size.width > 0 && capture.size.height > 0) {
+      try {
+        final Uint8List bytes = capture.image!;
+        final double imageWidth = capture.size.width;
+        final double imageHeight = capture.size.height;
 
-          final RecognizedText recognizedText =
-              await _textRecognizer.processImage(inputImage);
+        final InputImage inputImage = InputImage.fromBytes(
+          bytes: bytes,
+          metadata: InputImageMetadata(
+            size: Size(imageWidth, imageHeight),
+            rotation: InputImageRotation.rotation0deg, // مواءمة مسمى الدوران المتوافق حديثاً
+            format: InputImageFormat.nv21,
+            bytesPerRow: imageWidth.toInt(),
+          ),
+        );
 
-          RegExp regExp = RegExp(r'[0-9٠-٩]+');
-          Iterable<Match> matches = regExp.allMatches(recognizedText.text);
-          List<String> foundNumbers = [];
+        final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
 
-          for (Match match in matches) {
-            foundNumbers.add(_convertHindiToArabicDigits(match.group(0) ?? ""));
-          }
+        RegExp regExp = RegExp(r'[0-9٠-٩]+');
+        Iterable<Match> matches = regExp.allMatches(recognizedText.text);
+        List<String> foundNumbers = [];
 
-          if (foundNumbers.length >= 2) {
-            detectedSubjectNumber = foundNumbers.first;
-            detectedGrade = foundNumbers.last;
-          } else if (foundNumbers.length == 1) {
-            detectedGrade = foundNumbers.first;
-          }
+        for (Match match in matches) {
+          foundNumbers.add(_convertHindiToArabicDigits(match.group(0) ?? ""));
         }
 
-        _verifyThreeZones(secretCode, detectedSubjectNumber, detectedGrade);
-        break;
+        if (foundNumbers.length >= 2) {
+          detectedSubjectNumber = foundNumbers.first;
+          detectedGrade = foundNumbers.last;
+        } else if (foundNumbers.length == 1) {
+          detectedGrade = foundNumbers.first;
+        }
+      } catch (_) {
+        detectedGrade = "";
       }
     }
+
+    _verifyThreeZones(secretCode, detectedSubjectNumber, detectedGrade);
   }
 
   String _convertHindiToArabicDigits(String input) {
@@ -131,12 +154,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
     for (int i = 0; i < hindiDigits.length; i++) {
       input = input.replaceAll(hindiDigits[i], englishDigits[i]);
     }
-    return input;
+    return input.trim();
   }
 
   void _verifyThreeZones(String secretCode, String subjectNum, String grade) {
-    if (subjectNum.isNotEmpty &&
-        subjectNum != _selectedSubjectIndexInFile.toString()) {
+    if (subjectNum.isNotEmpty && subjectNum != _selectedSubjectIndexInFile.toString()) {
       _showSecurityWarningDialog(subjectNum);
       return;
     }
@@ -151,7 +173,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     for (int i = 1; i < sheet.maxRows; i++) {
       var row = sheet.rows[i];
-      if (row.length > 3 && row[3]?.value?.toString() == secretCode) {
+      if (row.length > 3 && row[3]?.value?.toString().trim() == secretCode) {
         name = row[1]?.value?.toString() ?? 'اسم غير معروف';
         found = true;
         break;
@@ -169,9 +191,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('الرقم السري ($secretCode) غير مسجل بالكشوفات!')),
+          content: Text('⚠️ الرقم السري ($secretCode) غير مدرج بملف الكنترول!'),
+          backgroundColor: Colors.orange.shade700,
+        ),
       );
-      cameraController.start();
     }
   }
 
@@ -186,20 +209,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
             children: [
               Icon(Icons.gpp_bad, color: Colors.red),
               SizedBox(width: 8),
-              Text('تنبيه: تعارض في مادة الرصد!')
+              Text('تنبيه أمني: تعارض مادة الرصد!')
             ],
           ),
           content: Text(
-              'الورقة الحالية تتبع مادة رقم ($wrongNum)، بينما أنت تقوم حالياً برصد مادة "$_selectedSubject" رقم ($_selectedSubjectIndexInFile).\n\nيرجى تعديل المادة من القائمة السفلية أولاً وتكرار المسح من أجل سلامة البيانات.'),
+              'الورقة الممسوحة تتبع مادة رقم ($wrongNum)، بينما الكنترول مضبوط حالياً على مادة "$_selectedSubject" رقم ($_selectedSubjectIndexInFile).\n\nيرجى تعديل المادة النشطة من القائمة أولاً لضمان سلامة البيانات.'),
           actions: [
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () {
-                Navigator.pop(context);
-                cameraController.start();
-              },
-              child: const Text('فهمت، إعادة المحاولة',
-                  style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('فهمت، تراجع', style: TextStyle(color: Colors.white)),
             )
           ],
         ),
@@ -215,20 +234,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
         return Directionality(
           textDirection: TextDirection.rtl,
           child: AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8)),
               child: const Row(
                 children: [
                   Icon(Icons.edit_note, color: Colors.blue, size: 28),
                   SizedBox(width: 10),
-                  Text('فورم مراجعة واعتماد الدرجة',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('فورم مراجعة واعتماد الدرجة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -236,61 +250,38 @@ class _ScannerScreenState extends State<ScannerScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('اسم الطالب: $_studentName',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 16)),
-                Text(
-                    'مادة الرصد: $_selectedSubject (كود: $_selectedSubjectIndexInFile)',
-                    style:
-                        const TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                Text('👤 الاسم: $_studentName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 4),
+                Text('📚 المادة: $_selectedSubject (رقم: $_selectedSubjectIndexInFile)', style: const TextStyle(color: Colors.blueGrey, fontSize: 12)),
                 const Divider(),
-                const Text(
-                    'الدرجة المقروءة من الصندوق (عدّلها بيدك إذا لزم الأمر):',
-                    style: TextStyle(fontSize: 14)),
+                const Text('الدرجة الملتقطة ذكياً (يمكنك التعديل يدوياً):', style: TextStyle(fontSize: 13)),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _gradeController,
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue),
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.blue),
                   decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     fillColor: Colors.grey[50],
                     filled: true,
-                    suffixIcon: const Icon(Icons.calculate, color: Colors.blue),
                   ),
                 ),
               ],
             ),
             actions: [
               TextButton(
-                child: const Text('إلغاء العملية',
-                    style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold)),
+                child: const Text('إلغاء وتخطي', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  setState(() {
-                    _scannedSecretCode = null;
-                  });
-                  cameraController.start();
+                  setState(() { _scannedSecretCode = null; });
                 },
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8))),
-                child: const Text('حفظ واعتماد الدرجة',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold)),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.save_rounded, color: Colors.white),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade600),
+                label: const Text('اعتماد وحفظ للكنترول', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 onPressed: () {
                   Navigator.of(context).pop();
                   _executeSaveIntoExcel();
@@ -303,52 +294,66 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  void _executeSaveIntoExcel() {
-    if (_excelPath == null ||
-        _selectedSubject == null ||
-        _scannedSecretCode == null) {
-      return;
-    }
+  void _executeSaveIntoExcel() async {
+    if (_excelPath == null || _selectedSubject == null || _scannedSecretCode == null) return;
 
-    var bytes = File(_excelPath!).readAsBytesSync();
-    var excel = my_excel.Excel.decodeBytes(bytes);
-    String sheetName = excel.tables.keys.first;
-    var sheet = excel.tables[sheetName]!;
+    try {
+      var bytes = File(_excelPath!).readAsBytesSync();
+      var excel = my_excel.Excel.decodeBytes(bytes);
+      String sheetName = excel.tables.keys.first;
+      var sheet = excel.tables[sheetName]!;
 
-    int subjectColumnIndex = 4 + _dynamicSubjects.indexOf(_selectedSubject!);
-    bool updated = false;
+      int subjectColumnIndex = 4 + _dynamicSubjects.indexOf(_selectedSubject!);
+      bool updated = false;
 
-    for (int i = 1; i < sheet.maxRows; i++) {
-      var row = sheet.rows[i];
-      if (row.length > 3 && row[3]?.value?.toString() == _scannedSecretCode) {
-        sheet.updateCell(
-          my_excel.CellIndex.indexByColumnRow(
-              columnIndex: subjectColumnIndex, rowIndex: i),
-          my_excel.TextCellValue(_gradeController.text),
-        );
-        updated = true;
-        break;
+      for (int i = 1; i < sheet.maxRows; i++) {
+        var row = sheet.rows[i];
+        if (row.length > 3 && row[3]?.value?.toString().trim() == _scannedSecretCode) {
+          // المواءمة مع إصدار Excel الحديث للوصول المباشر والتعديل المستقر
+          var cell = sheet.cell(my_excel.CellIndex.indexByColumnRow(
+            columnIndex: subjectColumnIndex, 
+            rowIndex: i
+          ));
+          cell.value = my_excel.TextCellValue(_gradeController.text.trim().isEmpty ? "0" : _gradeController.text.trim());
+          updated = true;
+          break;
+        }
       }
-    }
 
-    if (updated) {
-      var fileBytes = excel.save();
-      File(_excelPath!)
-        ..createSync(recursive: true)
-        ..writeAsBytesSync(fileBytes!);
+      if (updated) {
+        var fileBytes = excel.save();
+        if (fileBytes != null) {
+          // 1. الكتابة المباشرة الإجبارية مع الـ Flush لضمان تدوين البيانات على الجوال فورياً
+          final File originalFile = File(_excelPath!);
+          await originalFile.writeAsBytes(fileBytes, flush: true);
 
+          // 2. عمل نسخة احتياطية سحابية ومحلية آمنة في التنزيلات لعدم فقدان البيانات
+          String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+          await FileSaver.instance.saveFile(
+            name: "stugrascan_Backup_${timestamp}.xlsx",
+            bytes: Uint8List.fromList(fileBytes),
+          );
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ تم رصد وحفظ درجة الطالب بنجاح! الدرجة: ${_gradeController.text}'),
+              backgroundColor: Colors.green.shade700
+            ),
+          );
+
+          setState(() {
+            _scannedRecordsCount++;
+            _scannedSecretCode = null;
+            _studentName = null;
+            _gradeController.clear();
+          });
+        }
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                'تم رصد درجة الطالب بنجاح! الدرجة المعتمدة: ${_gradeController.text}')),
+        SnackBar(content: Text('❌ فشل حفظ البيانات في الملف: $e'), backgroundColor: Colors.red),
       );
-
-      setState(() {
-        _scannedSecretCode = null;
-        _studentName = null;
-        _gradeController.clear();
-      });
-      cameraController.start();
+      setState(() { _scannedSecretCode = null; });
     }
   }
 
@@ -358,13 +363,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('نظام أبو الخضر للرصد الذكي'),
+          title: const Text('نظام أبو الخضر للرصد المستقر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           centerTitle: true,
           backgroundColor: Colors.blue[800],
           foregroundColor: Colors.white,
           actions: [
             IconButton(
-              icon: const Icon(Icons.file_open),
+              icon: const Icon(Icons.file_open_rounded),
               onPressed: _pickExcelFile,
               tooltip: 'تحميل ملف الإكسيل',
             )
@@ -374,16 +379,22 @@ class _ScannerScreenState extends State<ScannerScreen> {
           children: [
             if (_excelPath == null)
               Container(
-                color: Colors.red[100],
+                color: Colors.red[50],
                 width: double.infinity,
-                padding: const EdgeInsets.all(8),
-                child: TextButton.icon(
-                  onPressed: _pickExcelFile,
-                  icon: const Icon(Icons.warning, color: Colors.red),
-                  label: const Text(
-                      'الرجاء تحديد ملف إكسيل الدرجات لتنشيط الفحص الجداري والمواد',
-                      style: TextStyle(
-                          color: Colors.red, fontWeight: FontWeight.bold)),
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: _pickExcelFile,
+                      child: const Text(
+                        'الرجاء تحميل ملف إكسيل الكنترول لتنشيط الكاميرا وفحص المواد',
+                        style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             Expanded(
@@ -396,16 +407,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   ),
                   Center(
                     child: Container(
-                      width: 330,
-                      height: 110,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: Colors.blue, width: 3),
-                          bottom: BorderSide(color: Colors.blue, width: 3),
-                          left: BorderSide(color: Colors.blue, width: 3),
-                          right: BorderSide(color: Colors.blue, width: 3),
-                        ),
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
+                      width: 320,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.blue.shade600, width: 3),
+                        borderRadius: const BorderRadius.all(Radius.circular(12)),
                       ),
                     ),
                   ),
@@ -415,12 +421,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
             Expanded(
               flex: 1,
               child: Container(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(12.0),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
-                  borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(24),
-                      topRight: Radius.circular(24)),
+                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
                 ),
                 child: SingleChildScrollView(
                   child: Column(
@@ -428,56 +432,51 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       if (_dynamicSubjects.isNotEmpty)
                         Row(
                           children: [
-                            const Text('المادة الحالية: ',
-                                style: TextStyle(
-                                    fontSize: 15, fontWeight: FontWeight.bold)),
-                            const SizedBox(width: 8),
+                            const Text('المادة الحالية: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 6),
                             Expanded(
                               child: DropdownButtonFormField<String>(
-                                initialValue: _selectedSubject,
+                                value: _selectedSubject,
                                 decoration: InputDecoration(
-                                  contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 10),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                                 ),
                                 items: _dynamicSubjects.map((String sub) {
-                                  return DropdownMenuItem<String>(
-                                      value: sub, child: Text(sub));
+                                  return DropdownMenuItem<String>(value: sub, child: Text(sub, style: const TextStyle(fontSize: 13)));
                                 }).toList(),
                                 onChanged: (val) {
                                   setState(() {
                                     _selectedSubject = val;
-                                    _selectedSubjectIndexInFile =
-                                        _dynamicSubjects.indexOf(val!) + 1;
+                                    _selectedSubjectIndexInFile = _dynamicSubjects.indexOf(val!) + 1;
                                   });
                                 },
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            // تم حل المشكلة نهائياً هنا عبر إزالة السطر المسبب للتعارض وتمرير خلفية دائرية مستقرة ومتوافقة مع كل الأجهزة
+                            const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.blue[100],
-                                borderRadius: BorderRadius.circular(20),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.blue[100], borderRadius: BorderRadius.circular(20)),
                               child: Text(
-                                'كود المادة: $_selectedSubjectIndexInFile',
-                                style: TextStyle(
-                                    color: Colors.blue[900],
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12),
+                                'كود: $_selectedSubjectIndexInFile',
+                                style: TextStyle(color: Colors.blue[900], fontWeight: FontWeight.bold, fontSize: 11),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(20)),
+                              child: Text(
+                                'مرصود: $_scannedRecordsCount',
+                                style: TextStyle(color: Colors.purple.shade900, fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ),
                           ],
                         )
                       else
                         const Center(
-                            child: Text(
-                                'قم برفع ملف الإكسيل الدراسي لتنشيط الفحص الثلاثي وتأمين المواد.',
-                                style: TextStyle(color: Colors.grey))),
+                          child: Text('قم برفع ملف الكنترول لتنشيط عداد ومواد الفحص الذكي.',
+                              style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ),
                     ],
                   ),
                 ),
