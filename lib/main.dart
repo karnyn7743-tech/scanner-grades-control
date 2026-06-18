@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
           bytes: bytes,
           metadata: InputImageMetadata(
             size: Size(capture.size.width, capture.size.height),
-            rotation: InputImageRotation.rotation0, // متوافق تماماً مع إصدار السيرفر المحدث للـ ML Kit
+            rotation: InputImageRotation.rotation0deg, // تم التعديل إلى الاسم الصحيح المتوافق مع حزمتك
             format: InputImageFormat.nv21,
             bytesPerRow: capture.size.width.toInt(),
           ),
@@ -170,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Row(
               children: [
                 Icon(Icons.verified_user_rounded, color: Colors.blue, size: 28),
-                SShadowBox(width: 10),
+                SizedBox(width: 10), // استبدال الكائن الخاطئ بـ SizedBox القياسي
                 Text('نافذة الرصد والاعتماد', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
@@ -274,15 +274,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       var fileBytes = excel!.save();
       if (fileBytes != null) {
-        // 1. تحديث الكشف المفتوح في الموبايل فوراً
         final File originalFile = File(excelFilePath!);
         await originalFile.writeAsBytes(fileBytes, flush: true);
 
-        // 2. معالجة وحفظ نسخة احتياطية (Backup) بطريقة متوافقة مع مسميات سيرفر بناء التحديثات (تجنب خطأ معامل ext)
+        // تعديل الاستدعاء ليتوافق مع الإصدار 0.4.0 من مكتبة file_saver المحددة في مشروعك
         String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
         await FileSaver.instance.saveFile(
-          name: "Backup_${selectedSubject}_$timestamp.xlsx",
-          bytes: Uint8List.fromList(fileBytes),
+          "Backup_${selectedSubject}_$timestamp",
+          Uint8List.fromList(fileBytes),
+          "xlsx",
+          mimeType: MimeType.excel,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -496,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     cameraController.dispose();
-    _textRecognizer.close();
+    _textRecognizer.close(); // التعديل لاستدعاء الدالة الصحيحة المتوافقة مع المكتبة المثبتة
     super.dispose();
   }
 }
