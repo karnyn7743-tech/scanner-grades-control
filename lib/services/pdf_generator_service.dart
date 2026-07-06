@@ -1,176 +1,139 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:excel/excel.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:path_provider/path_provider.dart';
 
 class PdfGeneratorService {
-  static Future<void> generateExamPapers({
+  static Future<String> generatePapers({
+    required Excel excelData,
+    required String qrFolderPath,
     required String selectedClass,
-    required String selectedSubject,
-    required String examName,
+    required String selectedSubject, // يستقبل رقم المادة الترتيبي كنص (مثل "1"، "2"...)
+    required String outputPath,
   }) async {
-    try {
-      // 1. طلب إذن التخزين
-      var status = await Permission.storage.request();
-      if (!status.isGranted) {
-        print('❌ إذن التخزين مرفوض');
-        return;
+    final pdf = pw.Document();
+
+    // تحميل خط القاهرة بالاسم الجديد والشرطة السفلية لضمان عمله في كود ماجيك
+    final fontData = await rootBundle.load("assets/fonts/Cairo_Regular.ttf");
+    final ttfFont = pw.Font.ttf(fontData);
+
+    String sheetName = excelData.tables.keys.first;
+    var sheet = excelData.tables[sheetName]!;
+
+    // تجاوز الصف الأول (رؤوس الأعمدة) والبدء في قراءة بيانات الطلاب
+    for (int i = 1; i < sheet.maxRows; i++) {
+      var row = sheet.rows[i];
+      if (row.isEmpty || row[0]?.value == null) continue;
+
+      // سحب بيانات الطالب (افترضنا العمود A للاسم والعمود B لرقم القيد)
+      String studentName = row[0]?.value?.toString().trim() ?? "طالب مجهول";
+      String studentId = row[1]?.value?.toString().trim() ?? "0000";
+
+      // تجهيز مسار صورة الـ QR الفردية للطالب من داخل مجلد qr_pict الثابت
+      final qrFile = File("$qrFolderPath/$studentId.png");
+      pw.MemoryImage? qrImage;
+      if (await qrFile.exists()) {
+        qrImage = pw.MemoryImage(await qrFile.readAsBytes());
       }
 
-      // 2. تحميل الخط العربي مع معالجة الأخطاء
-      pw.Font? arabicFont;
-      try {
-        var fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
-        arabicFont = pw.Font.ttf(fontData);
-        print('✅ تم تحميل الخط العربي بنجاح');
-      } catch (e) {
-        print('⚠️ فشل تحميل الخط العربي، سيتم استخدام Helvetica بدلاً منه: $e');
-        arabicFont = pw.Font.helvetica();
-      }
+      // إضافة صفحة مستقلة بحجم A4 لكل طالب في الحلقة التكرارية
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          theme: pw.ThemeData.withFont(base: ttfFont),
+          build: (pw.Context context) {
+            return pw.Directionality(
+              textDirection: pw.TextDirection.rtl,
+              child: pw.Container(
+                padding: const pw.EdgeInsets.all(20),
+                child: pw.Column(
+                  main pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    // ====== أولاً: أعلى يسار الصفحة (اسم الطالب ورقم القيد متجاورين) ======
+                    pw.Row(
+                      main pw.MainAxisAlignment.start,
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(8),
+                          border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                          child: pw.Row(
+                            children: [
+                              pw.Text("اسم الطالب: $studentName", style: const pw.TextStyle(fontSize: 12)),
+                              pw.SizedBox(width: 20),
+                              pw.Text("رقم القيد: $studentId", style: const pw.TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
 
-      // 3. قراءة ملف الإكسيل
-      var excelFile = await _getExcelFile();
-      if (excelFile == null) {
-        print('❌ ملف الإكسيل غير موجود في المسار المتوقع');
-        return;
-      }
+                    // مساحة فارغة لمحتوى أسئلة الامتحان
+                    pw.Spacer(),
 
-      var sheets = excelFile.sheets;
-      if (sheets.isEmpty) {
-        print('❌ لا توجد أوراق في ملف الإكسيل');
-        return;
-      }
+                    // ====== ثانياً: أسفل الصفحة أقصى اليسار بالترتيب المطلوب ======
+                    pw.Row(
+                      main pw.MainAxisAlignment.start,
+                      cross pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Row(
+                          cross pw.CrossAxisAlignment.end,
+                          children: [
+                            // 1. [رقم المادة] - مربع صغير يحتوي على الترتيب الرقمي للمادة
+                            pw.Container(
+                              width: 40,
+                              height: 40,
+                              alignment: pw.Alignment.center,
+                              border: pw.Border.all(color: PdfColors.black, width: 1.5),
+                              child: pw.Text(
+                                selectedSubject,
+                                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                              ),
+                            ),
+                            pw.SizedBox(width: 10),
 
-      var sheet = sheets.values.first;
-      if (sheet == null || sheet.maxRows == 0) {
-        print('❌ الورقة فارغة أو غير موجودة');
-        return;
-      }
+                            // 2. [رمز الاستجابة السريعة] - الـ QR الخاص بالطالب
+                            pw.Container(
+                              width: 60,
+                              height: 60,
+                              border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                              child: qrImage != null
+                                  ? pw.Image(qrImage, fit: pw.BoxFit.cover)
+                                  : pw.Center(child: pw.Text("لا يوجد\nQR", style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.center)),
+                            ),
+                            pw.SizedBox(width: 10),
 
-      // 4. جمع بيانات الطلاب للصف والمادة المطلوبين
-      List<Map<String, String>> students = [];
-      for (int i = 1; i < sheet.maxRows; i++) {
-        var classCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i));
-        var rowClass = classCell?.value?.toString()?.trim() ?? '';
-        if (rowClass == selectedClass) {
-          var idCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i));
-          var nameCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i));
-          var subjectCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: i));
-          String id = idCell?.value?.toString()?.trim() ?? '';
-          String name = nameCell?.value?.toString()?.trim() ?? '';
-          String subject = subjectCell?.value?.toString()?.trim() ?? '';
-          if (subject == selectedSubject && id.isNotEmpty && name.isNotEmpty) {
-            students.add({'id': id, 'name': name});
-          }
-        }
-      }
-
-      if (students.isEmpty) {
-        print('❌ لا يوجد طلاب بهذه المواصفات (الصف: $selectedClass، المادة: $selectedSubject)');
-        return;
-      }
-
-      print('✅ تم العثور على ${students.length} طالب');
-
-      // 5. تحديد مجلد الحفظ
-      final dir = await getExternalStorageDirectory();
-      if (dir == null) {
-        print('❌ لا يمكن الوصول إلى التخزين الخارجي');
-        return;
-      }
-      String folderPath = '${dir.path}/ExamPapers/$examName';
-      final folder = Directory(folderPath);
-      if (!await folder.exists()) {
-        await folder.create(recursive: true);
-        print('✅ تم إنشاء المجلد: $folderPath');
-      }
-
-      // 6. توليد ملف PDF لكل طالب
-      for (var student in students) {
-        String studentId = student['id']!;
-        String studentName = student['name']!;
-
-        // تحميل صورة QR إذا وجدت
-        pw.ImageProvider? qrImageProvider;
-        String qrPath = '${dir.path}/qr_pict/$studentId.png';
-        if (await File(qrPath).exists()) {
-          try {
-            var qrBytes = await File(qrPath).readAsBytes();
-            qrImageProvider = pw.MemoryImage(qrBytes);  // التغيير هنا
-          } catch (e) {
-            print('⚠️ فشل قراءة صورة QR للطالب $studentId: $e');
-          }
-        } else {
-          print('⚠️ صورة QR غير موجودة للطالب $studentId في المسار: $qrPath');
-        }
-
-        // إنشاء مستند PDF
-        final pdf = pw.Document();
-        pdf.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            margin: pw.EdgeInsets.all(20),
-            build: (context) {
-              return pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Text(
-                    'اسم الطالب: $studentName',
-                    style: pw.TextStyle(font: arabicFont, fontSize: 22),
-                  ),
-                  pw.SizedBox(height: 30),
-                  if (qrImageProvider != null)
-                    pw.Image(qrImageProvider, width: 200, height: 200),  // التغيير هنا
-                  pw.SizedBox(height: 30),
-                  pw.Text(
-                    'المادة: $selectedSubject',
-                    style: pw.TextStyle(font: arabicFont, fontSize: 18),
-                  ),
-                  pw.SizedBox(height: 10),
-                  pw.Text(
-                    'الامتحان: $examName',
-                    style: pw.TextStyle(font: arabicFont, fontSize: 16),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-
-        // حفظ الملف
-        String filePath = '$folderPath/$studentId.pdf';
-        final file = File(filePath);
-        await file.writeAsBytes(await pdf.save());
-        print('✅ تم حفظ PDF للطالب $studentId في: $filePath');
-      }
-
-      print('🎉 تم توليد جميع الأوراق بنجاح (${students.length})');
-    } catch (e, stack) {
-      print('❌ خطأ غير متوقع أثناء توليد PDF: $e');
-      print(stack);
+                            // 3. [مربع أزرق فاتح جداً وفارغ] - مخصص لرصد الدرجة مستقبلاً من المصحح
+                            pw.Container(
+                              width: 70,
+                              height: 60,
+                              border: pw.Border.all(color: PdfColors.blueAccent, width: 1.5),
+                              color: const PdfColor.fromInt(0xFFEBF3F9), // اللون الأزرق الفاتح جداً المطلبو
+                              child: pw.Center(
+                                child: pw.Text(
+                                  "الدرجة",
+                                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
     }
-  }
 
-  // دالة مساعدة لقراءة ملف الإكسيل من المسار الثابت
-  static Future<Excel?> _getExcelFile() async {
-    try {
-      final dir = await getExternalStorageDirectory();
-      if (dir == null) return null;
-      String excelPath = '${dir.path}/students_data.xlsx';
-      var file = File(excelPath);
-      if (!await file.exists()) {
-        print('❌ ملف الإكسيل غير موجود: $excelPath');
-        return null;
-      }
-      var bytes = await file.readAsBytes();
-      return Excel.decodeBytes(bytes);
-    } catch (e) {
-      print('❌ فشل قراءة ملف الإكسيل: $e');
-      return null;
-    }
+    // حفظ ملف الـ PDF النهائي في المسار المحدد
+    final String finalFileName = "$outputPath/امتحانات_$selectedClass.pdf";
+    final file = File(finalFileName);
+    await file.writeAsBytes(await pdf.save());
+
+    return finalFileName;
   }
 }
