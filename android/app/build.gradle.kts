@@ -5,9 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.scanner_grades_control"   // تم نقل الحزمة هنا
-    ndkVersion = "28.2.13676358"                        // الإصدار المطلوب
-
+    namespace = "com.example.scanner_grades_control"
     compileSdk = 35
 
     compileOptions {
@@ -19,12 +17,6 @@ android {
         jvmTarget = "11"
     }
 
-    sourceSets {
-        getByName("main") {
-            java.srcDirs("src/main/kotlin")
-        }
-    }
-
     defaultConfig {
         applicationId = "com.example.scanner_grades_control"
         minSdk = 21
@@ -34,7 +26,7 @@ android {
     }
 
     buildTypes {
-        getByName("release") {
+        release {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
