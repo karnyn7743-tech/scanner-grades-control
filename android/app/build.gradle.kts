@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.scanner_grades_control"
+    namespace = "com.example.make_exampapers_withcodes"
     compileSdk = 35
 
     compileOptions {
