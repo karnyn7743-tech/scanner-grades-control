@@ -9,35 +9,31 @@ class PdfGeneratorService {
     required Excel excelData,
     required String qrFolderPath,
     required String selectedClass,
-    required String selectedSubject, // يستقبل رقم المادة الترتيبي كنص (مثل "1"، "2"...)
+    required String selectedSubject,
     required String outputPath,
   }) async {
     final pdf = pw.Document();
 
-    // تحميل خط القاهرة بالاسم الجديد والشرطة السفلية لضمان عمله في كود ماجيك
+    // تحميل خط القاهرة بالاسم الصحيح
     final fontData = await rootBundle.load("assets/fonts/Cairo_Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
     String sheetName = excelData.tables.keys.first;
     var sheet = excelData.tables[sheetName]!;
 
-    // تجاوز الصف الأول (رؤوس الأعمدة) والبدء في قراءة بيانات الطلاب
     for (int i = 1; i < sheet.maxRows; i++) {
       var row = sheet.rows[i];
       if (row.isEmpty || row[0]?.value == null) continue;
 
-      // سحب بيانات الطالب (افترضنا العمود A للاسم والعمود B لرقم القيد)
       String studentName = row[0]?.value?.toString().trim() ?? "طالب مجهول";
       String studentId = row[1]?.value?.toString().trim() ?? "0000";
 
-      // تجهيز مسار صورة الـ QR الفردية للطالب من داخل مجلد qr_pict الثابت
       final qrFile = File("$qrFolderPath/$studentId.png");
       pw.MemoryImage? qrImage;
       if (await qrFile.exists()) {
         qrImage = pw.MemoryImage(await qrFile.readAsBytes());
       }
 
-      // إضافة صفحة مستقلة بحجم A4 لكل طالب في الحلقة التكرارية
       pdf.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
@@ -48,11 +44,11 @@ class PdfGeneratorService {
               child: pw.Container(
                 padding: const pw.EdgeInsets.all(20),
                 child: pw.Column(
-                  main pw.MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    // ====== أولاً: أعلى يسار الصفحة (اسم الطالب ورقم القيد متجاورين) ======
+                    // ====== أعلى يسار الصفحة ======
                     pw.Row(
-                      main pw.MainAxisAlignment.start,
+                      mainAxisAlignment: pw.MainAxisAlignment.start,
                       children: [
                         pw.Container(
                           padding: const pw.EdgeInsets.all(8),
@@ -68,18 +64,17 @@ class PdfGeneratorService {
                       ],
                     ),
 
-                    // مساحة فارغة لمحتوى أسئلة الامتحان
                     pw.Spacer(),
 
-                    // ====== ثانياً: أسفل الصفحة أقصى اليسار بالترتيب المطلوب ======
+                    // ====== أسفل الصفحة أقصى اليسار بالترتيب المعتمد ======
                     pw.Row(
-                      main pw.MainAxisAlignment.start,
-                      cross pw.CrossAxisAlignment.end,
+                      mainAxisAlignment: pw.MainAxisAlignment.start,
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
                         pw.Row(
-                          cross pw.CrossAxisAlignment.end,
+                          crossAxisAlignment: pw.CrossAxisAlignment.end,
                           children: [
-                            // 1. [رقم المادة] - مربع صغير يحتوي على الترتيب الرقمي للمادة
+                            // 1. [رقم المادة الترتيبي]
                             pw.Container(
                               width: 40,
                               height: 40,
@@ -92,7 +87,7 @@ class PdfGeneratorService {
                             ),
                             pw.SizedBox(width: 10),
 
-                            // 2. [رمز الاستجابة السريعة] - الـ QR الخاص بالطالب
+                            // 2. [رمز الاستجابة السريعة QR]
                             pw.Container(
                               width: 60,
                               height: 60,
@@ -103,12 +98,14 @@ class PdfGeneratorService {
                             ),
                             pw.SizedBox(width: 10),
 
-                            // 3. [مربع أزرق فاتح جداً وفارغ] - مخصص لرصد الدرجة مستقبلاً من المصحح
+                            // 3. [مربع رصد الدرجة الأزرق الفاتح جداً] - تم إصلاح الصياغة هنا باستخدام BoxDecoration
                             pw.Container(
                               width: 70,
                               height: 60,
-                              border: pw.Border.all(color: PdfColors.blueAccent, width: 1.5),
-                              color: const PdfColor.fromInt(0xFFEBF3F9), // اللون الأزرق الفاتح جداً المطلبو
+                              decoration: pw.BoxDecoration(
+                                color: const PdfColor.fromInt(0xFFEBF3F9),
+                                border: pw.Border.all(color: PdfColors.blueAccent, width: 1.5),
+                              ),
                               child: pw.Center(
                                 child: pw.Text(
                                   "الدرجة",
@@ -129,7 +126,6 @@ class PdfGeneratorService {
       );
     }
 
-    // حفظ ملف الـ PDF النهائي في المسار المحدد
     final String finalFileName = "$outputPath/امتحانات_$selectedClass.pdf";
     final file = File(finalFileName);
     await file.writeAsBytes(await pdf.save());
