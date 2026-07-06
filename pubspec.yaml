@@ -1,5 +1,6 @@
-name: my_exam_app
-description: "نظام الكنترول المصغر للأتمتة الجزئية للإمتحانات"
+name: scanner_grades_control
+description: A new Flutter project.
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
@@ -8,31 +9,19 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # المكتبات المطلوبة للميزة الجديدة
-  excel: ^4.0.0         # لقراءة ملفات الإكسيل ديناميكياً
-  pdf: ^3.10.0          # لتوليد ملفات الـ A4 والتنسيق
-  file_picker: ^8.0.0   # لاختيار ملف الإكسيل ومجلد الـ QR من الجوال
-  path_provider: ^2.1.0 # للحصول على مسارات الحفظ في ذاكرة الهاتف
+  excel: ^4.0.0
+  pdf: ^3.10.4
+  printing: ^5.11.1
+  permission_handler: ^11.3.1    # تمت الإضافة
+  path_provider: ^2.0.15
+  cupertino_icons: ^1.0.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-
-flutter_launcher_icons:
-  android: "launcher_icon"
-  image_path: "assets/images/app_icon.png"
-
-  # تحديد مسار ملف الخط مباشرة كـ asset
   assets:
-    - assets/fonts/Cairo_Regular.ttf
-
-  fonts:
-    - family: Cairo
-      fonts:
-        - asset: assets/fonts/Cairo_Regular.ttf
-
+    - assets/fonts/Cairo-Regular.ttf
