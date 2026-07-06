@@ -65,9 +65,9 @@ class PdfGeneratorService {
                         child: pw.Row(
                           children: [
                             // حجم الخط 14
-                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
+                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
                             pw.SizedBox(width: 25),
-                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
+                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -101,8 +101,8 @@ class PdfGeneratorService {
 
                           // 2. [رمز الاستجابة السريعة QR]
                           pw.Container(
-                            width: 60,
-                            height: 60,
+                            width: 40,
+                            height: 40,
                             decoration: pw.BoxDecoration(
                               border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
                             ),
