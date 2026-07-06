@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../services/pdf_generator_service.dart';
 
 class ExamGeneratorScreen extends StatefulWidget {
   const ExamGeneratorScreen({super.key});
@@ -42,19 +44,46 @@ class _ExamGeneratorScreenState extends State<ExamGeneratorScreen> {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: (_selectedClass != null && _selectedSubject != null)
-                  ? () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('سيتم التوليد قريباً...')),
-                      );
-                    }
-                  : null,
+              onPressed: (_selectedClass != null && _selectedSubject != null) ? _generatePapers : null,
               child: const Text('توليد الأوراق'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _generatePapers() async {
+    var status = await Permission.storage.request();
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يجب منح إذن التخزين')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await PdfGeneratorService.generateExamPapers(
+        selectedClass: _selectedClass!,
+        selectedSubject: _selectedSubject!,
+        examName: _examNameController.text,
+      );
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم توليد الأوراق بنجاح!')),
+      );
+    } catch (e) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل التوليد: $e')),
+      );
+    }
   }
 
   @override
