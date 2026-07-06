@@ -1,36 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'screens/exam_generator_screen.dart';
+import 'screens/home_screen.dart'; // استيراد الشاشة الرئيسية المستقلة الجديدة
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // طلب الأذونات عند بدء التشغيل
+  
+  // طلب صلاحيات الوصول إلى الذاكرة والتخزين عند بدء التشغيل
   await _requestPermissions();
+  
   runApp(const MyApp());
 }
 
-Future<void> _requestPermissions() async {
-  try {
-    var status = await Permission.storage.request();
-    if (!status.isGranted) {
-      print('⚠️ لم يتم منح إذن التخزين');
-    } else {
-      print('✅ تم منح إذن التخزين');
-    }
-  } catch (e) {
-    print('❌ خطأ في طلب الأذونات: $e');
-  }
-}
-
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Scanner Grades Control',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const ExamGeneratorScreen(),
+      title: 'صانع أوراق الاختبارات',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterialDesign: true,
+      ),
+      debugShowCheckedModeBanner: false,
+      home: const HomeScreen(), // توجيه التطبيق ليفتح مباشرة على واجهة التوليد المرنة
     );
+  }
+}
+
+// دالة فحص وتأكيد الصلاحيات لضمان حفظ الـ PDF بدون قيود النظام
+Future<void> _requestPermissions() async {
+  var status = await Permission.storage.status;
+  if (!status.isGranted) {
+    await Permission.storage.request();
   }
 }
