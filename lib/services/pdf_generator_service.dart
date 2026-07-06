@@ -16,7 +16,7 @@ class PdfGeneratorService {
 
     // الحل البديل والمضمون للخط العربي: تحميل خط Arial أو الخط الافتراضي المدعوم للعربية
     // سنقوم بجلب الخط من الـ Google Fonts المدمجة أو عبر الـ Network/Assets بأسلوب آمن
-    final fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
+    final fontData = await rootBundle.load("assets/fonts/Amiri_Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
     String sheetName = excelData.tables.keys.first;
