@@ -130,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("خطأ أثناء توليد أوراق الاختبارات: $e", textAlign: TextAlign.center), backgroundColor: Colors.red),
       );
-    } final {
+    } finally { // تم التصحيح هنا من (final) إلى (finally)
       setState(() {
         _isGenerating = false;
       });
