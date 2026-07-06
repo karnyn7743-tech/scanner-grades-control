@@ -18,7 +18,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.scanner_grades_control"
+        applicationId = "com.example.make_exampapers_withcodes"
         minSdk = 21
         targetSdk = 35
         versionCode = 1
