@@ -1,119 +1,176 @@
 import 'dart:io';
 import 'package:excel/excel.dart';
-import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 
 class PdfGeneratorService {
-  // دالة لتوليد ملف الـ PDF بناءً على حلقة تكرارية للطلاب
-  static Future<String> generatePapers({
-    required Excel excelData,
-    required String qrFolderPath,
+  static Future<void> generateExamPapers({
     required String selectedClass,
     required String selectedSubject,
-    required String outputPath,
+    required String examName,
   }) async {
-    final pdf = pw.Document();
-    String sheetName = excelData.tables.keys.first;
-    var sheet = excelData.tables[sheetName]!;
+    try {
+      // 1. طلب إذن التخزين
+      var status = await Permission.storage.request();
+      if (!status.isGranted) {
+        print('❌ إذن التخزين مرفوض');
+        return;
+      }
 
-    // تحميل الخط العربي لضمان طباعة الأسماء العربية بشكل صحيح داخل الـ PDF
-    var arabicFont = pw.Font.ttf(await rootBundle.load("assets/fonts/Cairo-Regular.ttf"));
+      // 2. تحميل الخط العربي مع معالجة الأخطاء
+      pw.Font? arabicFont;
+      try {
+        var fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
+        arabicFont = pw.Font.ttf(fontData);
+        print('✅ تم تحميل الخط العربي بنجاح');
+      } catch (e) {
+        print('⚠️ فشل تحميل الخط العربي، سيتم استخدام Helvetica بدلاً منه: $e');
+        arabicFont = pw.Font.helvetica();
+      }
 
-    // الحلقة التكرارية على صفوف الطلاب (تبدأ من الصف 1 لتجاوز العناوين)
-    for (int i = 1; i < sheet.maxRows; i++) {
-      var classCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i)).value?.toString().trim();
-      
-      // التصفية بناءً على الصف المختار (العمود C)
-      if (classCell == selectedClass) {
-        String studentID = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i)).value?.toString().trim() ?? "";   // العمود A
-        String studentName = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i)).value?.toString().trim() ?? ""; // العمود B
-        
-        // جلب صورة الـ QR التي تطابق رقم القيد
-        String qrImagePath = "$qrFolderPath/$studentID.png";
-        File qrFile = File(qrImagePath);
-        
-        pw.MemoryImage? qrImage;
-        if (await qrFile.exists()) {
-          qrImage = pw.MemoryImage(await qrFile.readAsBytes());
+      // 3. قراءة ملف الإكسيل
+      var excelFile = await _getExcelFile();
+      if (excelFile == null) {
+        print('❌ ملف الإكسيل غير موجود في المسار المتوقع');
+        return;
+      }
+
+      var sheets = excelFile.sheets;
+      if (sheets.isEmpty) {
+        print('❌ لا توجد أوراق في ملف الإكسيل');
+        return;
+      }
+
+      var sheet = sheets.values.first;
+      if (sheet == null || sheet.maxRows == 0) {
+        print('❌ الورقة فارغة أو غير موجودة');
+        return;
+      }
+
+      // 4. جمع بيانات الطلاب للصف والمادة المطلوبين
+      List<Map<String, String>> students = [];
+      for (int i = 1; i < sheet.maxRows; i++) {
+        var classCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i));
+        var rowClass = classCell?.value?.toString()?.trim() ?? '';
+        if (rowClass == selectedClass) {
+          var idCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i));
+          var nameCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i));
+          var subjectCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: i));
+          String id = idCell?.value?.toString()?.trim() ?? '';
+          String name = nameCell?.value?.toString()?.trim() ?? '';
+          String subject = subjectCell?.value?.toString()?.trim() ?? '';
+          if (subject == selectedSubject && id.isNotEmpty && name.isNotEmpty) {
+            students.add({'id': id, 'name': name});
+          }
+        }
+      }
+
+      if (students.isEmpty) {
+        print('❌ لا يوجد طلاب بهذه المواصفات (الصف: $selectedClass، المادة: $selectedSubject)');
+        return;
+      }
+
+      print('✅ تم العثور على ${students.length} طالب');
+
+      // 5. تحديد مجلد الحفظ
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) {
+        print('❌ لا يمكن الوصول إلى التخزين الخارجي');
+        return;
+      }
+      String folderPath = '${dir.path}/ExamPapers/$examName';
+      final folder = Directory(folderPath);
+      if (!await folder.exists()) {
+        await folder.create(recursive: true);
+        print('✅ تم إنشاء المجلد: $folderPath');
+      }
+
+      // 6. توليد ملف PDF لكل طالب
+      for (var student in students) {
+        String studentId = student['id']!;
+        String studentName = student['name']!;
+
+        // تحميل صورة QR إذا وجدت
+        pw.Image? qrImage;
+        String qrPath = '${dir.path}/QR Codes/$studentId.png';
+        if (await File(qrPath).exists()) {
+          try {
+            var qrBytes = await File(qrPath).readAsBytes();
+            qrImage = pw.MemoryImage(qrBytes);
+          } catch (e) {
+            print('⚠️ فشل قراءة صورة QR للطالب $studentId: $e');
+          }
+        } else {
+          print('⚠️ صورة QR غير موجودة للطالب $studentId في المسار: $qrPath');
         }
 
-        // بناء صفحة A4 مخصصة لكل طالب في الحلقة
+        // إنشاء مستند PDF
+        final pdf = pw.Document();
         pdf.addPage(
           pw.Page(
             pageFormat: PdfPageFormat.a4,
-            build: (pw.Context context) {
-              return pw.Directionality(
-                textDirection: pw.TextDirection.rtl, // لدعم المحاذاة العربية
-                child: pw.Stack(
-                  children: [
-                    // أعلى يسار الورقة: [اسم الطالب، يليه رقم قيد الطالب]
-                    pw.Positioned(
-                      top: 20,
-                      left: 20,
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start, // تم التصحيح هنا
-                        children: [
-                          pw.Text("الطالب: $studentName", style: pw.TextStyle(font: arabicFont, fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                          pw.SizedBox(height: 5),
-                          pw.Text("رقم القيد: $studentID", style: pw.TextStyle(font: arabicFont, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-
-                    // أسفل يسار الورقة: منطقة الكنترول والأتمتة
-                    pw.Positioned(
-                      bottom: 40,
-                      left: 20,
-                      child: pw.Row(
-                        crossAxisAlignment: pw.CrossAxisAlignment.end, // تم التصحيح هنا
-                        children: [
-                          // المربع الأول: مربع رقم/اسم المادة المختارة
-                          pw.Container(
-                            width: 60,
-                            height: 60,
-                            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 1)),
-                            alignment: pw.Alignment.center,
-                            child: pw.Text(selectedSubject, style: pw.TextStyle(font: arabicFont, fontSize: 10), textAlign: pw.TextAlign.center),
-                          ),
-                          pw.SizedBox(width: 10),
-
-                          // المربع الثاني: صورة الـ QR
-                          qrImage != null
-                              ? pw.Image(qrImage, width: 60, height: 60)
-                              : pw.Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.black, width: 1)),
-                                  alignment: pw.Alignment.center,
-                                  child: pw.Text("QR مفقود", style: pw.TextStyle(font: arabicFont, fontSize: 8)),
-                                ),
-                          pw.SizedBox(width: 10),
-
-                          // المربع الثالث: مربع فارغ أزرق باهت جداً لرصد الدرجة بخط اليد
-                          pw.Container(
-                            width: 60,
-                            height: 60,
-                            decoration: pw.BoxDecoration(
-                              color: PdfColor.fromHex("#EBF3F9"), // أزرق باهت جداً كما حددت
-                              border: pw.Border.all(color: PdfColors.black, width: 1),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+            margin: pw.EdgeInsets.all(20),
+            build: (context) {
+              return pw.Column(
+                mainAxisAlignment: pw.MainAxisAlignment.center,
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Text(
+                    'اسم الطالب: $studentName',
+                    style: pw.TextStyle(font: arabicFont, fontSize: 22),
+                  ),
+                  pw.SizedBox(height: 30),
+                  if (qrImage != null)
+                    pw.Image(qrImage, width: 200, height: 200),
+                  pw.SizedBox(height: 30),
+                  pw.Text(
+                    'المادة: $selectedSubject',
+                    style: pw.TextStyle(font: arabicFont, fontSize: 18),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Text(
+                    'الامتحان: $examName',
+                    style: pw.TextStyle(font: arabicFont, fontSize: 16),
+                  ),
+                ],
               );
             },
           ),
         );
-      }
-    }
 
-    // حفظ الملف النهائي في ذاكرة الهاتف
-    final file = File("$outputPath/Exam_Papers_${selectedClass}_$selectedSubject.pdf");
-    await file.writeAsBytes(await pdf.save());
-    return file.path;
+        // حفظ الملف
+        String filePath = '$folderPath/$studentId.pdf';
+        final file = File(filePath);
+        await file.writeAsBytes(await pdf.save());
+        print('✅ تم حفظ PDF للطالب $studentId في: $filePath');
+      }
+
+      print('🎉 تم توليد جميع الأوراق بنجاح (${students.length})');
+    } catch (e, stack) {
+      print('❌ خطأ غير متوقع أثناء توليد PDF: $e');
+      print(stack);
+    }
+  }
+
+  // دالة مساعدة لقراءة ملف الإكسيل من المسار الثابت
+  static Future<Excel?> _getExcelFile() async {
+    try {
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) return null;
+      String excelPath = '${dir.path}/students_data.xlsx';
+      var file = File(excelPath);
+      if (!await file.exists()) {
+        print('❌ ملف الإكسيل غير موجود: $excelPath');
+        return null;
+      }
+      var bytes = await file.readAsBytes();
+      return Excel.decodeBytes(bytes);
+    } catch (e) {
+      print('❌ فشل قراءة ملف الإكسيل: $e');
+      return null;
+    }
   }
 }
