@@ -22,9 +22,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # تعريف الخطوط لدعم اللغة العربية في الـ PDF والواجهات
+  # تعريف مجلد الأصول والخطوط لدعم اللغة العربية
   assets:
     - assets/fonts/
+
   fonts:
     - family: Cairo
       fonts:
