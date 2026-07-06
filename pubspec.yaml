@@ -1,5 +1,5 @@
 name: maker_exampapers
-description: A new Flutter project.
+description: "تطبيق توليد أوراق اختبارات الطلاب"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,12 +9,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # المكتبات الأساسية للمشروع المحدث
   excel: ^4.0.0
   pdf: ^3.10.4
-  printing: ^5.11.1
-  permission_handler: ^11.3.1    # تمت الإضافة
-  path_provider: ^2.0.15
-  cupertino_icons: ^1.0.6
+  file_picker: ^6.1.1
+  permission_handler: ^11.0.1
 
 dev_dependencies:
   flutter_test:
@@ -23,5 +23,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # حزم ملف الخط بالاسم والامتداد الصحيح تماماً
   assets:
-    - assets/fonts/Cairo-Regular.ttf
+    - assets/fonts/Cairo_Regular.ttf
+
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo_Regular.ttf
