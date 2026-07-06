@@ -95,7 +95,7 @@ class PdfGeneratorService {
 
         // تحميل صورة QR إذا وجدت
         pw.ImageProvider? qrImageProvider;
-        String qrPath = '${dir.path}/QR Codes/$studentId.png';
+        String qrPath = '${dir.path}/qr_pict/$studentId.png';
         if (await File(qrPath).exists()) {
           try {
             var qrBytes = await File(qrPath).readAsBytes();
