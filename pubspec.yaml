@@ -31,4 +31,4 @@ flutter:
   fonts:
     - family: Cairo
       fonts:
-        - asset: assets/fonts/Cairo-Regular.ttf
+        - assets: assets/fonts/Cairo-Regular.ttf
