@@ -52,7 +52,7 @@ class PdfGeneratorService {
                       top: 20,
                       left: 20,
                       child: pw.Column(
-                        cross: pw.CrossAxisAlignment.start,
+                        crossAxisAlignment: pw.CrossAxisAlignment.start, // تم التصحيح هنا
                         children: [
                           pw.Text("الطالب: $studentName", style: pw.TextStyle(font: arabicFont, fontSize: 14, fontWeight: pw.FontWeight.bold)),
                           pw.SizedBox(height: 5),
@@ -66,7 +66,7 @@ class PdfGeneratorService {
                       bottom: 40,
                       left: 20,
                       child: pw.Row(
-                        cross: pw.CrossAxisAlignment.end,
+                        crossAxisAlignment: pw.CrossAxisAlignment.end, // تم التصحيح هنا
                         children: [
                           // المربع الأول: مربع رقم/اسم المادة المختارة
                           pw.Container(
@@ -95,7 +95,7 @@ class PdfGeneratorService {
                             width: 60,
                             height: 60,
                             decoration: pw.BoxDecoration(
-                              color: PdfColor.fromHex("#EBF3F9"), // أزرق باهت جداً
+                              color: PdfColor.fromHex("#EBF3F9"), // أزرق باهت جداً كما حددت
                               border: pw.Border.all(color: PdfColors.black, width: 1),
                             ),
                           ),
@@ -111,10 +111,9 @@ class PdfGeneratorService {
       }
     }
 
-    // حفظ الملف النهائي
+    // حفظ الملف النهائي في ذاكرة الهاتف
     final file = File("$outputPath/Exam_Papers_${selectedClass}_$selectedSubject.pdf");
     await file.writeAsBytes(await pdf.save());
     return file.path;
   }
 }
-
