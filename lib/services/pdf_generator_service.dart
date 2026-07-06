@@ -52,7 +52,10 @@ class PdfGeneratorService {
                       children: [
                         pw.Container(
                           padding: const pw.EdgeInsets.all(8),
-                          border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                          // تم التعديل هنا: نقل الـ border إلى داخل BoxDecoration
+                          decoration: pw.BoxDecoration(
+                            border: pw.Border.all(color: PdfColors.grey300, width: 1),
+                          ),
                           child: pw.Row(
                             children: [
                               pw.Text("اسم الطالب: $studentName", style: const pw.TextStyle(fontSize: 12)),
@@ -79,7 +82,10 @@ class PdfGeneratorService {
                               width: 40,
                               height: 40,
                               alignment: pw.Alignment.center,
-                              border: pw.Border.all(color: PdfColors.black, width: 1.5),
+                              // تم التعديل هنا: نقل الـ border إلى داخل BoxDecoration
+                              decoration: pw.BoxDecoration(
+                                border: pw.Border.all(color: PdfColors.black, width: 1.5),
+                              ),
                               child: pw.Text(
                                 selectedSubject,
                                 style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
@@ -91,14 +97,17 @@ class PdfGeneratorService {
                             pw.Container(
                               width: 60,
                               height: 60,
-                              border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                              // تم التعديل هنا: نقل الـ border إلى داخل BoxDecoration
+                              decoration: pw.BoxDecoration(
+                                border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                              ),
                               child: qrImage != null
                                   ? pw.Image(qrImage, fit: pw.BoxFit.cover)
                                   : pw.Center(child: pw.Text("لا يوجد\nQR", style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.center)),
                             ),
                             pw.SizedBox(width: 10),
 
-                            // 3. [مربع رصد الدرجة الأزرق الفاتح جداً] - تم إصلاح الصياغة هنا باستخدام BoxDecoration
+                            // 3. [مربع رصد الدرجة الأزرق الفاتح جداً]
                             pw.Container(
                               width: 70,
                               height: 60,
