@@ -1,4 +1,4 @@
-name: scanner_grades_control
+name: make_exampapers_withcodes
 description: A new Flutter project.
 publish_to: 'none'
 version: 1.0.0+1
@@ -12,7 +12,6 @@ dependencies:
   excel: ^4.0.0
   pdf: ^3.10.4
   printing: ^5.11.1
-  permission_handler: ^11.3.1    # تمت الإضافة
   path_provider: ^2.0.15
   cupertino_icons: ^1.0.6
 
