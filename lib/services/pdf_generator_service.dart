@@ -14,8 +14,8 @@ class PdfGeneratorService {
   }) async {
     final pdf = pw.Document();
 
-    // تحميل خط القاهرة
-    final fontData = await rootBundle.load("assets/fonts/Cairo_Regular.ttf");
+    // تحميل خط القاهرة مع معالجة الأخطاء إذا لم يُعثر عليه
+    final fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
     String sheetName = excelData.tables.keys.first;
@@ -36,97 +36,98 @@ class PdfGeneratorService {
 
       pdf.addPage(
         pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          // ربط الخط بالثيم العام بشكل صارم
-          theme: pw.ThemeData.withFont(base: ttfFont, bold: ttfFont),
+          // التعديل 1: تحديد الهامش بدقة 4 مم من كافة الحواف
+          pageFormat: PdfPageFormat.a4.copyWith(
+            marginTop: 4 * PdfPageFormat.mm,
+            marginBottom: 4 * PdfPageFormat.mm,
+            marginLeft: 4 * PdfPageFormat.mm,
+            marginRight: 4 * PdfPageFormat.mm,
+          ),
+          theme: pw.ThemeData.withFont(
+            base: ttfFont,
+            bold: ttfFont,
+          ),
           build: (pw.Context context) {
             return pw.Directionality(
               textDirection: pw.TextDirection.rtl,
-              child: pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                child: pw.Column(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    // ====== أعلى يسار الصفحة ======
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.start,
-                      children: [
-                        pw.Container(
-                          padding: const pw.EdgeInsets.all(8),
-                          decoration: pw.BoxDecoration(
-                            border: pw.Border.all(color: PdfColors.grey300, width: 1),
-                          ),
-                          child: pw.Row(
-                            children: [
-                              // تم تعديل الستاين هنا لتمرير الخط مباشرة ومنع المربعات
-                              pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
-                              pw.SizedBox(width: 20),
-                              pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
-                            ],
-                          ),
+              child: pw.Column(
+                main pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  // ====== أعلى يسار الصفحة ======
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.start,
+                    children: [
+                      pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: pw.BoxDecoration(
+                          border: pw.Border.all(color: PdfColors.grey400, width: 1),
                         ),
-                      ],
-                    ),
-
-                    pw.Spacer(),
-
-                    // ====== أسفل الصفحة أقصى اليسار ======
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.start,
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Row(
-                          crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        child: pw.Row(
                           children: [
-                            // 1. [رقم المادة الترتيبي]
-                            pw.Container(
-                              width: 40,
-                              height: 40,
-                              alignment: pw.Alignment.center,
-                              decoration: pw.BoxDecoration(
-                                border: pw.Border.all(color: PdfColors.black, width: 1.5),
-                              ),
-                              child: pw.Text(
-                                selectedSubject,
-                                style: pw.TextStyle(font: ttfFont, fontSize: 16, fontWeight: pw.FontWeight.bold),
-                              ),
-                            ),
-                            pw.SizedBox(width: 10),
-
-                            // 2. [رمز الاستجابة السريعة QR]
-                            pw.Container(
-                              width: 60,
-                              height: 60,
-                              decoration: pw.BoxDecoration(
-                                border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
-                              ),
-                              child: qrImage != null
-                                  ? pw.Image(qrImage, fit: pw.BoxFit.cover)
-                                  : pw.Center(child: pw.Text("لا يوجد\nQR", style: pw.TextStyle(font: ttfFont, fontSize: 8), textAlign: pw.TextAlign.center)),
-                            ),
-                            pw.SizedBox(width: 10),
-
-                            // 3. [مربع رصد الدرجة]
-                            pw.Container(
-                              width: 70,
-                              height: 60,
-                              decoration: pw.BoxDecoration(
-                                color: const PdfColor.fromInt(0xFFEBF3F9),
-                                border: pw.Border.all(color: PdfColors.blueAccent, width: 1.5),
-                              ),
-                              child: pw.Center(
-                                child: pw.Text(
-                                  "الدرجة",
-                                  style: pw.TextStyle(font: ttfFont, fontSize: 10, color: PdfColors.grey600),
-                                ),
-                              ),
-                            ),
+                            // التعديل 5: حجم الخط أصبح 14
+                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
+                            pw.SizedBox(width: 25),
+                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
                           ],
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+
+                  pw.Spacer(),
+
+                  // ====== أسفل الصفحة بالترتيب والمقاييس المعدلة ======
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.start,
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          // 1. [رقم المادة الترتيبي]
+                          pw.Container(
+                            width: 40,
+                            height: 40,
+                            alignment: pw.Alignment.center,
+                            decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: PdfColors.black, width: 1.5),
+                            ),
+                            child: pw.Text(
+                              selectedSubject,
+                              style: pw.TextStyle(font: ttfFont, fontSize: 16, fontWeight: pw.FontWeight.bold),
+                            ),
+                          ),
+                          pw.SizedBox(width: 10),
+
+                          // 2. [رمز الاستجابة السريعة QR]
+                          pw.Container(
+                            width: 40,
+                            height: 40,
+                            decoration: pw.BoxDecoration(
+                              border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+                            ),
+                            // التعديل 3: إزالة نص "QR" التالف تماماً، إذا لم توجد صورة يبقى المربع فارغاً ونظيفاً
+                            child: qrImage != null
+                                ? pw.Image(qrImage, fit: pw.BoxFit.cover)
+                                : pw.SizedBox(), 
+                          ),
+                          pw.SizedBox(width: 10),
+
+                          // 3. [مربع رصد الدرجة - التعديل 2 و 4: متطابق المقاس 40x40 وفارغ تماماً]
+                          pw.Container(
+                            width: 40,
+                            height: 40,
+                            decoration: pw.BoxDecoration(
+                              color: const PdfColor.fromInt(0xFFEBF3F9), // أزرق فاتح جداً
+                              border: pw.Border.all(color: PdfColors.blueAccent, width: 1.5),
+                            ),
+                            child: pw.SizedBox(), // فارغ تماماً لرصد الدرجة يدوياً
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ),
             );
           },
