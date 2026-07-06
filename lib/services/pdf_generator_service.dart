@@ -94,12 +94,12 @@ class PdfGeneratorService {
         String studentName = student['name']!;
 
         // تحميل صورة QR إذا وجدت
-        pw.Image? qrImage;
+        pw.ImageProvider? qrImageProvider;
         String qrPath = '${dir.path}/QR Codes/$studentId.png';
         if (await File(qrPath).exists()) {
           try {
             var qrBytes = await File(qrPath).readAsBytes();
-            qrImage = pw.MemoryImage(qrBytes);
+            qrImageProvider = pw.MemoryImage(qrBytes);  // التغيير هنا
           } catch (e) {
             print('⚠️ فشل قراءة صورة QR للطالب $studentId: $e');
           }
@@ -123,8 +123,8 @@ class PdfGeneratorService {
                     style: pw.TextStyle(font: arabicFont, fontSize: 22),
                   ),
                   pw.SizedBox(height: 30),
-                  if (qrImage != null)
-                    pw.Image(qrImage, width: 200, height: 200),
+                  if (qrImageProvider != null)
+                    pw.Image(qrImageProvider, width: 200, height: 200),  // التغيير هنا
                   pw.SizedBox(height: 30),
                   pw.Text(
                     'المادة: $selectedSubject',
