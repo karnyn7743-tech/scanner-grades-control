@@ -15,7 +15,7 @@ class PdfGeneratorService {
     final pdf = pw.Document();
 
     // تحميل خط القاهرة
-    final fontData = await rootBundle.load("assets/fonts/Cairo_Regular.ttf");
+    final fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
     String sheetName = excelData.tables.keys.first;
