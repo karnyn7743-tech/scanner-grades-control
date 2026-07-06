@@ -1,13 +1,26 @@
 workflows:
-  build-android:
-    name: Build Android APK
-    instance_type: mac_mini_m2 # أو أي نوع آلة بناء تفضله
+  android-build:
+    name: Android Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      flutter: stable
+
     scripts:
       - name: Clean Flutter project
         script: flutter clean
+
       - name: Get Flutter packages
         script: flutter pub get
-      - name: Build APK with Flutter
+
+      - name: Build Android APK
         script: flutter build apk --release
+
     artifacts:
-      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/flutter-apk/*.apk
+
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com  # يمكنك تغيير هذا إلى بريدك الإلكتروني
