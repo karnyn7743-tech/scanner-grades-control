@@ -14,7 +14,7 @@ class PdfGeneratorService {
   }) async {
     final pdf = pw.Document();
 
-    // تحميل خط القاهرة بالاسم الصحيح
+    // تحميل خط القاهرة
     final fontData = await rootBundle.load("assets/fonts/Cairo_Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
@@ -37,7 +37,8 @@ class PdfGeneratorService {
       pdf.addPage(
         pw.Page(
           pageFormat: PdfPageFormat.a4,
-          theme: pw.ThemeData.withFont(base: ttfFont),
+          // ربط الخط بالثيم العام بشكل صارم
+          theme: pw.ThemeData.withFont(base: ttfFont, bold: ttfFont),
           build: (pw.Context context) {
             return pw.Directionality(
               textDirection: pw.TextDirection.rtl,
@@ -52,15 +53,15 @@ class PdfGeneratorService {
                       children: [
                         pw.Container(
                           padding: const pw.EdgeInsets.all(8),
-                          // تم التعديل هنا: نقل الـ border إلى داخل BoxDecoration
                           decoration: pw.BoxDecoration(
                             border: pw.Border.all(color: PdfColors.grey300, width: 1),
                           ),
                           child: pw.Row(
                             children: [
-                              pw.Text("اسم الطالب: $studentName", style: const pw.TextStyle(fontSize: 12)),
+                              // تم تعديل الستاين هنا لتمرير الخط مباشرة ومنع المربعات
+                              pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
                               pw.SizedBox(width: 20),
-                              pw.Text("رقم القيد: $studentId", style: const pw.TextStyle(fontSize: 12)),
+                              pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
                             ],
                           ),
                         ),
@@ -69,7 +70,7 @@ class PdfGeneratorService {
 
                     pw.Spacer(),
 
-                    // ====== أسفل الصفحة أقصى اليسار بالترتيب المعتمد ======
+                    // ====== أسفل الصفحة أقصى اليسار ======
                     pw.Row(
                       mainAxisAlignment: pw.MainAxisAlignment.start,
                       crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -82,13 +83,12 @@ class PdfGeneratorService {
                               width: 40,
                               height: 40,
                               alignment: pw.Alignment.center,
-                              // تم التعديل هنا: نقل الـ border إلى داخل BoxDecoration
                               decoration: pw.BoxDecoration(
                                 border: pw.Border.all(color: PdfColors.black, width: 1.5),
                               ),
                               child: pw.Text(
                                 selectedSubject,
-                                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                                style: pw.TextStyle(font: ttfFont, fontSize: 16, fontWeight: pw.FontWeight.bold),
                               ),
                             ),
                             pw.SizedBox(width: 10),
@@ -97,17 +97,16 @@ class PdfGeneratorService {
                             pw.Container(
                               width: 60,
                               height: 60,
-                              // تم التعديل هنا: نقل الـ border إلى داخل BoxDecoration
                               decoration: pw.BoxDecoration(
                                 border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
                               ),
                               child: qrImage != null
                                   ? pw.Image(qrImage, fit: pw.BoxFit.cover)
-                                  : pw.Center(child: pw.Text("لا يوجد\nQR", style: const pw.TextStyle(fontSize: 8), textAlign: pw.TextAlign.center)),
+                                  : pw.Center(child: pw.Text("لا يوجد\nQR", style: pw.TextStyle(font: ttfFont, fontSize: 8), textAlign: pw.TextAlign.center)),
                             ),
                             pw.SizedBox(width: 10),
 
-                            // 3. [مربع رصد الدرجة الأزرق الفاتح جداً]
+                            // 3. [مربع رصد الدرجة]
                             pw.Container(
                               width: 70,
                               height: 60,
@@ -118,7 +117,7 @@ class PdfGeneratorService {
                               child: pw.Center(
                                 child: pw.Text(
                                   "الدرجة",
-                                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                                  style: pw.TextStyle(font: ttfFont, fontSize: 10, color: PdfColors.grey600),
                                 ),
                               ),
                             ),
