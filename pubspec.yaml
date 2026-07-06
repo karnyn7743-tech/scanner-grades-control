@@ -13,7 +13,7 @@ dependencies:
   # المكتبات الأساسية للمشروع المحدث
   excel: ^4.0.0
   pdf: ^3.10.4
-  file_picker: ^6.1.1
+  file_picker: ^8.0.0
   permission_handler: ^11.0.1
 
 dev_dependencies:
