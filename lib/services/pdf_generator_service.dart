@@ -14,8 +14,8 @@ class PdfGeneratorService {
   }) async {
     final pdf = pw.Document();
 
-    // تحميل خط القاهرة مع معالجة الأخطاء إذا لم يُعثر عليه
-    final fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
+    // تحميل خط القاهرة
+    final fontData = await rootBundle.load("assets/fonts/Cairo_Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
     String sheetName = excelData.tables.keys.first;
@@ -36,7 +36,7 @@ class PdfGeneratorService {
 
       pdf.addPage(
         pw.Page(
-          // التعديل 1: تحديد الهامش بدقة 4 مم من كافة الحواف
+          // تحديد الهامش بدقة 4 مم من كافة الحواف
           pageFormat: PdfPageFormat.a4.copyWith(
             marginTop: 4 * PdfPageFormat.mm,
             marginBottom: 4 * PdfPageFormat.mm,
@@ -51,7 +51,7 @@ class PdfGeneratorService {
             return pw.Directionality(
               textDirection: pw.TextDirection.rtl,
               child: pw.Column(
-                main pw.MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, // تم التصحيح هنا بدقة
                 children: [
                   // ====== أعلى يسار الصفحة ======
                   pw.Row(
@@ -64,10 +64,10 @@ class PdfGeneratorService {
                         ),
                         child: pw.Row(
                           children: [
-                            // التعديل 5: حجم الخط أصبح 14
-                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
+                            // حجم الخط 14
+                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                             pw.SizedBox(width: 25),
-                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
+                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                           ],
                         ),
                       ),
@@ -101,19 +101,18 @@ class PdfGeneratorService {
 
                           // 2. [رمز الاستجابة السريعة QR]
                           pw.Container(
-                            width: 40,
-                            height: 40,
+                            width: 60,
+                            height: 60,
                             decoration: pw.BoxDecoration(
                               border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
                             ),
-                            // التعديل 3: إزالة نص "QR" التالف تماماً، إذا لم توجد صورة يبقى المربع فارغاً ونظيفاً
                             child: qrImage != null
                                 ? pw.Image(qrImage, fit: pw.BoxFit.cover)
                                 : pw.SizedBox(), 
                           ),
                           pw.SizedBox(width: 10),
 
-                          // 3. [مربع رصد الدرجة - التعديل 2 و 4: متطابق المقاس 40x40 وفارغ تماماً]
+                          // 3. [مربع رصد الدرجة - متطابق المقاس 40x40 وفارغ تماماً]
                           pw.Container(
                             width: 40,
                             height: 40,
