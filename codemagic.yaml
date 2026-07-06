@@ -4,6 +4,12 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
+    # تفعيل التخزين المؤقت لتسريع البناء
+    cache:
+      cache_paths:
+        - ~/.pub-cache          # مكتبات Dart و Flutter
+        - ~/.gradle/caches      # مكتبات Android
+
     environment:
       flutter: stable
 
@@ -23,4 +29,4 @@ workflows:
     publishing:
       email:
         recipients:
-          - your-email@example.com  # يمكنك تغيير هذا إلى بريدك الإلكتروني
+          - your-email@example.com  # استبدل هذا ببريدك الإلكتروني
