@@ -1,30 +1,35 @@
 import 'package:flutter/material.dart';
-import 'screens/exam_generator_screen.dart'; // استيراد شاشة التوليد مباشرة
+import 'package:permission_handler/permission_handler.dart';
+import 'screens/exam_generator_screen.dart';
 
-void main() {
-  runApp(const ExamAutomationApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // طلب الأذونات عند بدء التشغيل
+  await _requestPermissions();
+  runApp(const MyApp());
 }
 
-class ExamAutomationApp extends StatelessWidget {
-  const ExamAutomationApp({Key? key}) : super(key: key);
+Future<void> _requestPermissions() async {
+  try {
+    var status = await Permission.storage.request();
+    if (!status.isGranted) {
+      print('⚠️ لم يتم منح إذن التخزين');
+    } else {
+      print('✅ تم منح إذن التخزين');
+    }
+  } catch (e) {
+    print('❌ خطأ في طلب الأذونات: $e');
+  }
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'نظام أتمتة طباعة الاختبارات',
-      debugShowCheckedModeBanner: false,
-      // ضبط الثيم العام للتطبيق ليتوافق مع ألوان الهوية البصرية الجديدة
-      theme: ThemeData(
-        primaryColor: const Color(0xff029ae4),
-        scaffoldBackgroundColor: const Color(0xffeef7fe),
-        fontFamily: 'Cairo', // تعيين الخط العربي الافتراضي لواجهات التطبيق
-        appBarTheme: const AppBarTheme(
-          backgroundColor: const Color(0xff029ae4),
-          centerTitle: true,
-          elevation: 2,
-        ),
-      ),
-      // جعل شاشة توليد أوراق الاختبارات هي الشاشة الرئيسية للتطبيق
+      title: 'Scanner Grades Control',
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const ExamGeneratorScreen(),
     );
   }
