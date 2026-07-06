@@ -5,31 +5,37 @@ plugins {
 }
 
 android {
-    namespace = "com.example.school_grading_app"
+    namespace = "com.example.scanner_grades_control"   // تم نقل الحزمة هنا
+    ndkVersion = "28.2.13676358"                        // الإصدار المطلوب
+
     compileSdk = 35
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = "11"
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/kotlin")
+        }
     }
 
     defaultConfig {
-        applicationId = "com.example.school_grading_app"
+        applicationId = "com.example.scanner_grades_control"
         minSdk = 21
         targetSdk = 35
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = 1
+        versionName = "1.0"
     }
 
     buildTypes {
-        release {
+        getByName("release") {
             signingConfig = signingConfigs.getByName("debug")
-            isMinifyEnabled = false
-            isShrinkResources = false
         }
     }
 }
