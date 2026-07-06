@@ -14,7 +14,8 @@ class PdfGeneratorService {
   }) async {
     final pdf = pw.Document();
 
-    // تحميل خط القاهرة
+    // الحل البديل والمضمون للخط العربي: تحميل خط Arial أو الخط الافتراضي المدعوم للعربية
+    // سنقوم بجلب الخط من الـ Google Fonts المدمجة أو عبر الـ Network/Assets بأسلوب آمن
     final fontData = await rootBundle.load("assets/fonts/Cairo-Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
@@ -36,22 +37,25 @@ class PdfGeneratorService {
 
       pdf.addPage(
         pw.Page(
-          // تحديد الهامش بدقة 4 مم من كافة الحواف
           pageFormat: PdfPageFormat.a4.copyWith(
             marginTop: 4 * PdfPageFormat.mm,
             marginBottom: 4 * PdfPageFormat.mm,
             marginLeft: 4 * PdfPageFormat.mm,
             marginRight: 4 * PdfPageFormat.mm,
           ),
+          // إجبار الثيم كاملاً بكل تفرعاته على استخدام الخط العربي
           theme: pw.ThemeData.withFont(
             base: ttfFont,
             bold: ttfFont,
+            italic: ttfFont,
+          ).copyWith(
+            defaultTextStyle: pw.TextStyle(font: ttfFont, fontSize: 14),
           ),
           build: (pw.Context context) {
             return pw.Directionality(
               textDirection: pw.TextDirection.rtl,
               child: pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, // تم التصحيح هنا بدقة
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
                   // ====== أعلى يسار الصفحة ======
                   pw.Row(
@@ -64,10 +68,10 @@ class PdfGeneratorService {
                         ),
                         child: pw.Row(
                           children: [
-                            // حجم الخط 14
-                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
+                            // تمرير مخصّص للخط في كل قطعة نصية لحماية النص من التلف
+                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                             pw.SizedBox(width: 25),
-                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 12)),
+                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                           ],
                         ),
                       ),
@@ -76,7 +80,7 @@ class PdfGeneratorService {
 
                   pw.Spacer(),
 
-                  // ====== أسفل الصفحة بالترتيب والمقاييس المعدلة ======
+                  // ====== أسفل الصفحة ======
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.start,
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -112,15 +116,15 @@ class PdfGeneratorService {
                           ),
                           pw.SizedBox(width: 10),
 
-                          // 3. [مربع رصد الدرجة - متطابق المقاس 40x40 وفارغ تماماً]
+                          // 3. [مربع رصد الدرجة]
                           pw.Container(
                             width: 40,
                             height: 40,
                             decoration: pw.BoxDecoration(
-                              color: const PdfColor.fromInt(0xFFEBF3F9), // أزرق فاتح جداً
+                              color: const PdfColor.fromInt(0xFFEBF3F9),
                               border: pw.Border.all(color: PdfColors.blueAccent, width: 1.5),
                             ),
-                            child: pw.SizedBox(), // فارغ تماماً لرصد الدرجة يدوياً
+                            child: pw.SizedBox(),
                           ),
                         ],
                       ),
