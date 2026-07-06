@@ -26,9 +26,9 @@ flutter:
 
   # حزم ملف الخط بالاسم والامتداد الصحيح تماماً
   assets:
-    - assets/fonts/Cairo-Regular.ttf
+    - assets/fonts/Cairo_Regular.ttf
 
   fonts:
     - family: Cairo
       fonts:
-        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo_Regular.ttf
