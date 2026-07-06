@@ -9,7 +9,7 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xffeef7fe), // لون الخلفية الفاتح المريح للعين
       appBar: AppBar(
-        title: const Text('...نظام الكنترول للأتمتة المصغرة للإمتحانات'),
+        title: const Text(.صانع أوراق الإمتحانات'),
         backgroundColor: const Color(0xff029ae4),
         elevation: 0,
         actions: [
