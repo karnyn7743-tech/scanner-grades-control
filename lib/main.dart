@@ -20,7 +20,6 @@ class MyApp extends StatelessWidget {
       title: 'صانع أوراق الاختبارات',
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        useMaterialDesign: true,
       ),
       debugShowCheckedModeBanner: false,
       home: const HomeScreen(), // توجيه التطبيق ليفتح مباشرة على واجهة التوليد المرنة
