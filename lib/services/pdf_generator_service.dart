@@ -69,9 +69,9 @@ class PdfGeneratorService {
                         child: pw.Row(
                           children: [
                             // تمرير مخصّص للخط في كل قطعة نصية لحماية النص من التلف
-                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
+                            pw.Text("رقم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                             pw.SizedBox(width: 25),
-                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
+                            pw.Text("اسم الطالب: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                           ],
                         ),
                       ),
