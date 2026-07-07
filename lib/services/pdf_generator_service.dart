@@ -8,33 +8,49 @@ class PdfGeneratorService {
   static Future<String> generatePapers({
     required Excel excelData,
     required String qrFolderPath,
-    required String selectedClass,
-    required String selectedSubject,
+    required String selectedClass,      // الصف المختار من القائمة (مثلاً: "رابع")
+    required String selectedSubject,    // رقم/رمز المادة المختار
     required String outputPath,
   }) async {
     final pdf = pw.Document();
 
-    // تحميل خط الأميري بعد تثبيته بنجاح
+    // تحميل خط الأميري لضمان ظهور العربية بشكل سليم
     final fontData = await rootBundle.load("assets/fonts/Amiri_Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
     String sheetName = excelData.tables.keys.first;
     var sheet = excelData.tables[sheetName]!;
 
+    // متغير لحساب عدد الطلاب الذين تم توليد أوراق لهم بالفعل
+    int generatedCount = 0;
+
     for (int i = 1; i < sheet.maxRows; i++) {
       var row = sheet.rows[i];
-      if (row.isEmpty || row[0]?.value == null) continue;
+      // التحقق من أن الصف ليس فارغاً وأن الأعمدة الأساسية تحتوي على بيانات
+      if (row.isEmpty || row.length < 3 || row[0]?.value == null) continue;
 
-      // ====== تم الإصلاح هنا: عكس الترتيب ليتوافق مع ملف الإكسيل الخاص بك ======
+      // قراءة الصف الدراسي من العمود C (الفهرس رقم 2)
+      String studentClass = row[2]?.value?.toString().trim() ?? "";
+
+      // ====== الميزة المطلوبة: الفلترة بناءً على الصف الدراسي ======
+      // إذا كان الصف المكتوب أمام الطالب في الإكسيل لا يطابق الصف المختار من القائمة، يتم تخطيه فوراً
+      if (studentClass.toLowerCase() != selectedClass.trim().toLowerCase()) {
+        continue; 
+      }
+
+      // قراءة بيانات الطالب بعد اجتياز شرط الفلترة
       String studentId = row[0]?.value?.toString().trim() ?? "0000";
       String studentName = row[1]?.value?.toString().trim() ?? "طالب مجهول";
 
-      // الآن سيبحث التطبيق عن 117.png بنجاح!
+      // البحث عن رمز الاستجابة السريعة QR برقم القيد
       final qrFile = File("$qrFolderPath/$studentId.png");
       pw.MemoryImage? qrImage;
       if (await qrFile.exists()) {
         qrImage = pw.MemoryImage(await qrFile.readAsBytes());
       }
+
+      // زيادة العداد الخاص بالطلاب المطابقين
+      generatedCount++;
 
       pdf.addPage(
         pw.Page(
@@ -114,7 +130,7 @@ class PdfGeneratorService {
                           ),
                           pw.SizedBox(width: 10),
 
-                          // 3. [مربع رصد الدرجة فارغ]
+                          // 3. [مربع رصد الدرجة فارغ ومطابق للمقاييس]
                           pw.Container(
                             width: 40,
                             height: 40,
@@ -132,6 +148,21 @@ class PdfGeneratorService {
               ),
             );
           },
+        ),
+      );
+    }
+
+    // إذا لم يتم العثور على أي طالب يطابق الصف المختار، نقوم بإنشاء صفحة فارغة تنبيهية حتى لا يفشل توليد ملف الـ PDF
+    if (generatedCount == 0) {
+      pdf.addPage(
+        pw.Page(
+          build: (pw.Context context) => pw.Center(
+            child: pw.Text(
+              "لم يتم العثور على طلاب مسجلين في صف: $selectedClass",
+              style: pw.TextStyle(font: ttfFont, fontSize: 18),
+              textDirection: pw.TextDirection.rtl,
+            ),
+          ),
         ),
       );
     }
