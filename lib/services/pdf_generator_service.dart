@@ -14,8 +14,7 @@ class PdfGeneratorService {
   }) async {
     final pdf = pw.Document();
 
-    // الحل البديل والمضمون للخط العربي: تحميل خط Arial أو الخط الافتراضي المدعوم للعربية
-    // سنقوم بجلب الخط من الـ Google Fonts المدمجة أو عبر الـ Network/Assets بأسلوب آمن
+    // تحميل خط الأميري بعد تثبيته بنجاح
     final fontData = await rootBundle.load("assets/fonts/Amiri_Regular.ttf");
     final ttfFont = pw.Font.ttf(fontData);
 
@@ -26,9 +25,11 @@ class PdfGeneratorService {
       var row = sheet.rows[i];
       if (row.isEmpty || row[0]?.value == null) continue;
 
-      String studentName = row[0]?.value?.toString().trim() ?? "طالب مجهول";
-      String studentId = row[1]?.value?.toString().trim() ?? "0000";
+      // ====== تم الإصلاح هنا: عكس الترتيب ليتوافق مع ملف الإكسيل الخاص بك ======
+      String studentId = row[0]?.value?.toString().trim() ?? "0000";
+      String studentName = row[1]?.value?.toString().trim() ?? "طالب مجهول";
 
+      // الآن سيبحث التطبيق عن 117.png بنجاح!
       final qrFile = File("$qrFolderPath/$studentId.png");
       pw.MemoryImage? qrImage;
       if (await qrFile.exists()) {
@@ -43,11 +44,9 @@ class PdfGeneratorService {
             marginLeft: 4 * PdfPageFormat.mm,
             marginRight: 4 * PdfPageFormat.mm,
           ),
-          // إجبار الثيم كاملاً بكل تفرعاته على استخدام الخط العربي
           theme: pw.ThemeData.withFont(
             base: ttfFont,
             bold: ttfFont,
-            italic: ttfFont,
           ).copyWith(
             defaultTextStyle: pw.TextStyle(font: ttfFont, fontSize: 14),
           ),
@@ -68,10 +67,9 @@ class PdfGeneratorService {
                         ),
                         child: pw.Row(
                           children: [
-                            // تمرير مخصّص للخط في كل قطعة نصية لحماية النص من التلف
-                            pw.Text("رقم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
+                            pw.Text("اسم الطالب: $studentName", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                             pw.SizedBox(width: 25),
-                            pw.Text("اسم الطالب: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
+                            pw.Text("رقم القيد: $studentId", style: pw.TextStyle(font: ttfFont, fontSize: 14)),
                           ],
                         ),
                       ),
@@ -116,7 +114,7 @@ class PdfGeneratorService {
                           ),
                           pw.SizedBox(width: 10),
 
-                          // 3. [مربع رصد الدرجة]
+                          // 3. [مربع رصد الدرجة فارغ]
                           pw.Container(
                             width: 40,
                             height: 40,
