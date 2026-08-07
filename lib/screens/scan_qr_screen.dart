@@ -1,290 +1,248 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as px;
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class Note {
-  final String id;
-  final String type; // 'error', 'warning', 'success', 'info'
-  final String title;
-  final String message;
-  final DateTime timestamp;
-  final String? studentId;
-  final String? studentName;
-
-  Note({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.message,
-    required this.timestamp,
-    this.studentId,
-    this.studentName,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'type': type,
-    'title': title,
-    'message': message,
-    'timestamp': timestamp.toIso8601String(),
-    'studentId': studentId,
-    'studentName': studentName,
-  }
-}
-
-class NotesScreen extends StatefulWidget {
-  final List<Note> notes;
-  final Function(List<Note>) onNotesChanged;
-
-  const NotesScreen({
-    Key? key,
-    required this.notes,
-    required this.onNotesChanged,
-  }) : super(key: key);
+class ScanQRScreen extends StatefulWidget {
+  const ScanQRScreen({super.key});
 
   @override
-  State<NotesScreen> createState() => _NotesScreenState();
+  State<ScanQRScreen> createState() => _ScanQRScreenState();
 }
 
-class _NotesScreenState extends State<NotesScreen> {
-  String _filter = 'all'; // all, error, warning, success
-  String _searchQuery = '';
+class _ScanQRScreenState extends State<ScanQRScreen> {
+  String? _excelPath;
+  px.Excel? _excelInstance;
+  Map<String, String> _studentMap = {}; // secretCode -> studentName
 
-  List<Note> get _filteredNotes {
-    var filtered = widget.notes;
+  String _secretCode = '';
+  String _studentName = '';
 
-    // تطبيق الفلتر
-    if (_filter != 'all') {
-      filtered = filtered.where((note) => note.type == _filter).toList();
-    }
+  final MobileScannerController _cameraController = MobileScannerController(
+    autoStart: false,
+    torchEnabled: false,
+    returnImage: false,
+  );
+  bool _isScanning = false;
 
-    // تطبيق البحث
-    if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((note) =>
-      note.title.contains(_searchQuery) ||
-          note.message.contains(_searchQuery) ||
-          (note.studentName?.contains(_searchQuery) ?? false)
-      ).toList();
-    }
-
-    // ترتيب من الأحدث إلى الأقدم
-    filtered.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-    return filtered;
-  }
-
-  Color _getTypeColor(String type) {
-    switch (type) {
-      case 'error': return Colors.red;
-      case 'warning': return Colors.orange;
-      case 'success': return Colors.green;
-      case 'info': return Colors.blue;
-      default: return Colors.grey;
-    }
-  }
-
-  IconData _getTypeIcon(String type) {
-    switch (type) {
-      case 'error': return Icons.error;
-      case 'warning': return Icons.warning;
-      case 'success': return Icons.check_circle;
-      case 'info': return Icons.info;
-      default: return Icons.note;
-    }
-  }
-
-  void _exportNotes() {
-    // تصدير الملاحظات إلى ملف نصي
-    final content = StringBuffer();
-    content.writeln('تقرير الملاحظات - ${DateTime.now()}');
-    content.writeln('=' * 50);
-    content.writeln();
-
-    for (var note in widget.notes) {
-      content.writeln('[${note.timestamp.toString().substring(0, 19)}] ${note.type.toUpperCase()}');
-      content.writeln('   ${note.title}: ${note.message}');
-      if (note.studentName != null) {
-        content.writeln('   الطالب: ${note.studentName} (${note.studentId ?? "بدون رقم"})');
+  // ===================== تحميل آخر ملف مستخدم =====================
+  Future<void> _loadLastExcelFile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? lastFile = prefs.getString('last_excel_file');
+      if (lastFile != null && await File(lastFile).exists()) {
+        _excelPath = lastFile;
+        await _loadExcel();
       }
-      content.writeln();
+    } catch (e) {
+      print('خطأ في تحميل آخر ملف: $e');
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _requestPermissions();
+    _loadLastExcelFile();
+  }
+
+  @override
+  void dispose() {
+    _cameraController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _requestPermissions() async {
+    await Permission.storage.request();
+    await Permission.camera.request();
+    if (await Permission.manageExternalStorage.request().isGranted) {
+      debugPrint("تم الحصول على صلاحية إدارة الملفات الشاملة");
+    }
+  }
+
+  // ===================== اختيار ملف Excel =====================
+  Future<void> _pickExcelFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls', 'xlsm', 'xlsb'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        _excelPath = result.files.single.path!;
+        // حفظ المسار في SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('last_excel_file', _excelPath!);
+        await _loadExcel();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ تم تحميل ملف الأكسيل بنجاح')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطأ: $e')),
+      );
+    }
+  }
+
+  // ===================== قراءة ملف Excel =====================
+  Future<void> _loadExcel() async {
+    if (_excelPath == null) return;
+    final bytes = await File(_excelPath!).readAsBytes();
+    _excelInstance = px.Excel.decodeBytes(bytes);
+    final sheet = _excelInstance!.tables.values.first;
+
+    _studentMap.clear();
+
+    for (int row = 1; row < sheet.maxRows; row++) {
+      final cellB = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row)).value;
+      final cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row)).value;
+
+      if (cellB != null && cellD != null) {
+        _studentMap[cellD.toString().trim()] = cellB.toString().trim();
+      }
     }
 
-    // هنا يمكن إضافة كود لحفظ الملف
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم تصدير ${widget.notes.length} ملاحظة')),
-    );
+    setState(() {});
   }
 
-  void _clearAllNotes() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('مسح جميع الملاحظات'),
-        content: Text('هل أنت متأكد من رغبتك في مسح جميع الملاحظات؟ هذا الإجراء لا يمكن التراجع عنه.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              widget.onNotesChanged([]);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('تم مسح جميع الملاحظات')),
-              );
-            },
-            child: Text('مسح الكل', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
+  // ===================== تشغيل/إيقاف الكاميرا =====================
+  void _toggleScanning() async {
+    if (_excelPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ يرجى اختيار ملف الأكسيل أولاً')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isScanning = !_isScanning;
+    });
+
+    if (_isScanning) {
+      await _cameraController.start();
+    } else {
+      await _cameraController.stop();
+      setState(() {
+        _secretCode = '';
+        _studentName = '';
+      });
+    }
   }
 
+  // ===================== معالجة نتيجة المسح =====================
+  void _onQRDetected(BarcodeCapture capture) {
+    if (capture.barcodes.isEmpty) return;
+
+    final String? code = capture.barcodes.first.rawValue;
+    if (code == null || code.isEmpty) return;
+
+    // إيقاف الكاميرا بعد المسح
+    _cameraController.stop();
+    setState(() {
+      _isScanning = false;
+      _secretCode = code;
+      _studentName = _studentMap[code] ?? '⚠️ غير موجود';
+    });
+  }
+
+  // ===================== واجهة المستخدم =====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('الملاحظات (${widget.notes.length})'),
-        backgroundColor: Colors.blue,
+        title: const Text('قراءة QR Code للطلاب'),
+        backgroundColor: Colors.lightBlue.shade300,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.download),
-            onPressed: _exportNotes,
-            tooltip: 'تصدير',
-          ),
-          if (widget.notes.isNotEmpty)
-            IconButton(
-              icon: Icon(Icons.delete_sweep),
-              onPressed: _clearAllNotes,
-              tooltip: 'مسح الكل',
-            ),
-        ],
       ),
-      body: Column(
-        children: [
-          // شريط البحث والفلتر
-          Padding(
-            padding: EdgeInsets.all(12),
-            child: Column(
-              children: [
-                // حقل البحث
-                TextField(
-                  decoration: InputDecoration(
-                    hintText: 'بحث...',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                  ),
-                  onChanged: (value) => setState(() => _searchQuery = value),
-                ),
-                SizedBox(height: 10),
-                // أزرار الفلتر
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip('الكل', 'all'),
-                      _buildFilterChip('أخطاء', 'error'),
-                      _buildFilterChip('تحذيرات', 'warning'),
-                      _buildFilterChip('نجاح', 'success'),
-                      _buildFilterChip('معلومات', 'info'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // قائمة الملاحظات
-          Expanded(
-            child: _filteredNotes.isEmpty
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.note_add, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'لا توجد ملاحظات',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
-                  Text(
-                    'ستظهر هنا أي ملاحظات أو أخطاء أثناء المسح',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _isScanning ? null : _pickExcelFile,
+              icon: const Icon(Icons.folder_open),
+              label: const Text('اختيار ملف الأكسيل'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
               ),
-            )
-                : ListView.builder(
-              padding: EdgeInsets.all(8),
-              itemCount: _filteredNotes.length,
-              itemBuilder: (context, index) {
-                final note = _filteredNotes[index];
-                return Card(
-                  margin: EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: _getTypeColor(note.type).withOpacity(0.2),
-                      child: Icon(
-                        _getTypeIcon(note.type),
-                        color: _getTypeColor(note.type),
-                      ),
-                    ),
-                    title: Text(
-                      note.title,
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(note.message),
-                        if (note.studentName != null)
-                          Text(
-                            '👤 ${note.studentName}',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        Text(
-                          '🕐 ${note.timestamp.toString().substring(11, 19)}',
-                          style: TextStyle(fontSize: 10, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                    isThreeLine: true,
-                    trailing: IconButton(
-                      icon: Icon(Icons.close, size: 20),
-                      onPressed: () {
-                        final newNotes = List<Note>.from(widget.notes);
-                        newNotes.removeWhere((n) => n.id == note.id);
-                        widget.onNotesChanged(newNotes);
-                      },
-                    ),
-                  ),
-                );
-              },
             ),
-          ),
-        ],
-      ),
-    );
-  }
+            const SizedBox(height: 12),
+            if (_excelPath != null)
+              Text('📁 ${_excelPath!.split('/').last}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
 
-  Widget _buildFilterChip(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.only(right: 8),
-      child: FilterChip(
-        label: Text(label),
-        selected: _filter == value,
-        onSelected: (selected) {
-          setState(() {
-            _filter = selected ? value : 'all';
-          });
-        },
-        backgroundColor: Colors.grey[200],
-        selectedColor: Colors.blue[100],
-        checkmarkColor: Colors.blue,
+            // حقل الرقم السري
+            TextField(
+              readOnly: true,
+              decoration: const InputDecoration(
+                labelText: 'الرقم السري',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.qr_code),
+              ),
+              controller: TextEditingController(text: _secretCode),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+
+            // حقل اسم الطالب
+            TextField(
+              readOnly: true,
+              decoration: const InputDecoration(
+                labelText: 'اسم الطالب',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.person),
+              ),
+              controller: TextEditingController(text: _studentName),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+
+            // زر المسح
+            ElevatedButton.icon(
+              onPressed: _toggleScanning,
+              icon: Icon(_isScanning ? Icons.stop : Icons.qr_code_scanner),
+              label: Text(_isScanning ? 'إيقاف المسح' : 'مسح QR Code'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isScanning ? Colors.red : Colors.green,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // شاشة الكاميرا
+            Container(
+              height: 250,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _isScanning ? Colors.greenAccent : Colors.grey, width: 2),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: _isScanning
+                    ? MobileScanner(
+                        controller: _cameraController,
+                        onDetect: _onQRDetected,
+                      )
+                    : const Center(
+                        child: Text(
+                          'اضغط "مسح QR Code" لتشغيل الكاميرا',
+                          style: TextStyle(color: Colors.white70),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
