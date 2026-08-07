@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.scanner_grades_control"
+    namespace = "com.example.automation of exams"
     compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.scanner_grades_control"
+        applicationId = "com.example.automation of exams"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 21
