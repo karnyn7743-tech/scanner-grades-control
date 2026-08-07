@@ -9,6 +9,18 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
+// دالة طلب أذونات التخزين
+Future<bool> _requestStoragePermission() async {
+  if (await Permission.storage.request().isGranted) {
+    return true;
+  }
+  // بالنسبة لإصدارات Android 11 وما فوق (API 30+)
+  if (await Permission.manageExternalStorage.request().isGranted) {
+    return true;
+  }
+  return false;
+}
+
 class _ImageRegions {
   final Uint8List? leftRegion;
   final Uint8List? centerRegion;
