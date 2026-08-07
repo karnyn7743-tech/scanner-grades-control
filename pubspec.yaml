@@ -9,10 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+    
+  qrscan_plus: ^1.0.8
+  
   # المكتبات الأساسية
   cupertino_icons: ^1.0.8
-  
   # الكاميرا والملفات
   camera: ^0.11.0
   file_picker: ^8.1.0
