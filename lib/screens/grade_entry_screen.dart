@@ -25,7 +25,7 @@ class GradeEntryScreen extends StatefulWidget {
 
 class _GradeEntryScreenState extends State<GradeEntryScreen> {
   String _fileName = "لم يتم اختيار ملف الكنترول بعد";
-  String? _selectedFilePath; // المسار الحقيقي للملف المختار
+  String? _selectedFilePath;
   List<String> _subjects = [];
   String? _selectedSubject;
   bool _isLoading = false;
@@ -47,7 +47,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   px.Excel? _excelInstance;
 
-  // ===================== دوال الصلاحيات =====================
   Future<void> _requestPermissions() async {
     await Permission.storage.request();
     await Permission.camera.request();
@@ -56,7 +55,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== تحميل آخر ملف مستخدم =====================
   Future<void> _loadLastExcelFile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -88,7 +86,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     super.dispose();
   }
 
-  // ===================== قراءة ملف Excel =====================
   Future<void> _parseExcelFile(String filePath) async {
     try {
       final bytes = await File(filePath).readAsBytes();
@@ -125,7 +122,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== اختيار ملف Excel (بدون نسخ) =====================
   Future<void> _pickAndParseExcel() async {
     await _requestPermissions();
     setState(() { _isLoading = true; });
@@ -142,11 +138,8 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       }
 
       final String sourcePath = result.files.single.path!;
-
-      // استخدم الملف في مكانه الأصلي مباشرة (بدون نسخ)
       await _parseExcelFile(sourcePath);
 
-      // حفظ المسار في SharedPreferences للاستخدام لاحقاً
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('last_excel_file', sourcePath);
 
@@ -158,7 +151,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== معالجة الأرقام العربية =====================
   String _convertArabicHindiDigits(String input) {
     const arabicDigits = {
       '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
@@ -177,7 +169,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     return match?.group(0) ?? '';
   }
 
-  // ===================== قص الصورة إلى مناطق =====================
   Future<_ImageRegions?> _cropImageRegions(Uint8List imageBytes, Size imageSize) async {
     try {
       final img.Image? fullImage = img.decodeImage(imageBytes);
@@ -221,7 +212,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== معالجة الصورة الملتقطة =====================
   Future<void> _processCapturedImage(BarcodeCapture capture) async {
     if (capture.barcodes.isEmpty || capture.barcodes.first.rawValue == null) return;
 
@@ -290,7 +280,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== حفظ الدرجة في Excel (كتابة مباشرة على الملف الأصلي) =====================
   Future<void> _saveGradeToExcel() async {
     if (_excelInstance == null || _selectedFilePath == null) {
       _showSnackBar("⚠️ خطأ: لم يتم تحميل ملف إكسيل بعد!");
@@ -304,7 +293,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       bool targetFound = false;
       int subjectColumnIndex = 4 + _subjects.indexOf(_selectedSubject!);
 
-      // البحث عن الطالب في العمود D
       for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
         var cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex)).value;
 
@@ -340,7 +328,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
         return;
       }
 
-      // ترميز الملف
       final List<int>? fileBytesList = _excelInstance!.encode();
       if (fileBytesList == null) {
         _showSnackBar("❌ فشل في ترميز الملف");
@@ -349,62 +336,27 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       }
       final Uint8List fileBytes = Uint8List.fromList(fileBytesList);
 
-      // ===== الكتابة مباشرة على الملف الأصلي =====
       final String currentPath = _selectedFilePath!;
       final File targetFile = File(currentPath);
 
-      bool saved = false;
-
-      try {
-        // محاولة الكتابة المباشرة
-        if (await targetFile.exists()) {
-          await targetFile.writeAsBytes(fileBytes, flush: true);
-          saved = true;
-        } else {
-          _showSnackBar("❌ الملف غير موجود في المسار المحدد!");
-          setState(() { _isLoading = false; });
-          return;
-        }
-      } catch (e) {
-        print('فشلت الكتابة المباشرة: $e');
-        // إذا فشلت الكتابة المباشرة، نستخدم FilePicker كحل احتياطي
-        try {
-          final String? newPath = await FilePicker.platform.saveFile(
-            dialogTitle: 'حفظ ملف الأكسيل المحدث',
-            fileName: currentPath.split('/').last,
-            bytes: fileBytes,
-          );
-          if (newPath != null) {
-            // تحديث المسار إلى الموقع الجديد
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('last_excel_file', newPath);
-            setState(() {
-              _selectedFilePath = newPath;
-              _fileName = newPath.split('/').last;
-            });
-            saved = true;
-            _showSnackBar("✅ تم حفظ الدرجة في موقع جديد: $newPath");
-          } else {
-            _showSnackBar("❌ تم إلغاء الحفظ");
-          }
-        } catch (e2) {
-          _showSnackBar("❌ فشل حفظ الملف حتى بالطريقة الاحتياطية: $e2");
-        }
+      if (await targetFile.exists()) {
+        await targetFile.writeAsBytes(fileBytes, flush: true);
+      } else {
+        _showSnackBar("❌ الملف غير موجود في المسار المحدد!");
+        setState(() { _isLoading = false; });
+        return;
       }
 
-      if (saved) {
+      if (await targetFile.exists() && await targetFile.length() > 0) {
         setState(() {
           _gradedStudents += 1;
           _secretIdResult = "سيظهر هنا الرقم السري";
           _gradeController.clear();
           _isScanningActive = false;
         });
-        // إذا تم الحفظ بنجاح (بالمباشرة أو الاحتياطي)
-        if (!saved) {
-          // تم التعامل مع الفشل أعلاه
-        } else {
-          _showSnackBar("✅ تم حفظ الدرجة بنجاح في: $currentPath");
-        }
+        _showSnackBar("✅ تم حفظ الدرجة بنجاح في: $currentPath");
+      } else {
+        _showSnackBar("❌ فشل حفظ الملف!");
       }
 
     } catch (e) {
@@ -415,7 +367,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== دوال مساعدة =====================
   void _showDialogAlert({required String title, required String message, required bool shouldCloseCamera}) {
     showDialog(
       context: context,
@@ -462,7 +413,6 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ===================== واجهة المستخدم =====================
   @override
   Widget build(BuildContext context) {
     Color appBarColor = Colors.lightBlue.shade300;
