@@ -1,4 +1,4 @@
-name: automation of exams
+name: automation_exams
 description: نظام إدخال درجات الطلاب عبر مسح QR Code والدرجة المكتوبة بخط اليد
 publish_to: 'none'
 version: 1.0.0+1
