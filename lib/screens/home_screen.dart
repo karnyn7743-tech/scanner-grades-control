@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'generate_qr_screen.dart';
 import 'scan_qr_screen.dart';
-import 'grade_entry_screen.dart';
+import 'grade_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
