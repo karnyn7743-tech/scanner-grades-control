@@ -1,4 +1,4 @@
-name: student_grades_scanner
+name: scanner_grades_control
 description: نظام إدخال درجات الطلاب عبر مسح QR Code والدرجة المكتوبة بخط اليد
 publish_to: 'none'
 version: 1.0.0+1
@@ -9,32 +9,28 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-    
-  qrscan_plus: ^1.0.8
-  
-  # المكتبات الأساسية
+
+  # ===== المكتبات الأساسية =====
   cupertino_icons: ^1.0.8
-  # الكاميرا والملفات
-  camera: ^0.11.0
+
+  # ===== الكاميرا ومعالجة الصور =====
+  # camera: ^0.11.0      # ← علّق هذا السطر لتجنب التعارض (تتم إدارته عبر mobile_scanner)
   file_picker: ^8.1.0
-  
-  # معالجة Excel
+  image: ^4.2.0
+  path_provider: ^2.1.3
+
+  # ===== Excel و QR =====
   excel: ^4.0.0
-  
-  # مسح QR Code
   mobile_scanner: ^5.1.0
-  
-  # OCR للتعرف على النصوص (الأرقام العربية والإنجليزية)
+  qrscan_plus: ^1.0.8
+
+  # ===== OCR والتعرف على النصوص =====
   google_ml_kit: ^0.18.0
-  
-  # التخزين المؤقت والصلاحيات
+
+  # ===== التخزين والصلاحيات =====
   shared_preferences: ^2.3.0
   provider: ^6.1.0
   permission_handler: ^11.3.1
-  
-  # معالجة الصور
-  image: ^4.2.0
-  path_provider: ^2.1.3
 
 dev_dependencies:
   flutter_test:
@@ -42,6 +38,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.4
 
+# ===== إعدادات الأيقونة (علّقها إذا لم تكن الصورة جاهزة) =====
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
@@ -50,7 +47,7 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
-  
-  # مجلدات الأصول (ضع أيقونتك هنا)
+
+  # ===== مجلدات الأصول (فعّل عند الحاجة) =====
   # assets:
   #   - assets/images/
