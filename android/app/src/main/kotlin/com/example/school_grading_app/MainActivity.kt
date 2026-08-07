@@ -1,4 +1,4 @@
-package com.example.maker_exampapers
+package com.example.automation of exams
 
 import io.flutter.embedding.android.FlutterActivity
 
