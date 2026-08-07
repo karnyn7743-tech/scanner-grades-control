@@ -22,7 +22,7 @@
     <application
         android:label="student_grades_scanner"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icon"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true"
         android:allowBackup="true"
