@@ -9,18 +9,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// دالة طلب أذونات التخزين
-Future<bool> _requestStoragePermission() async {
-  if (await Permission.storage.request().isGranted) {
-    return true;
-  }
-  // بالنسبة لإصدارات Android 11 وما فوق (API 30+)
-  if (await Permission.manageExternalStorage.request().isGranted) {
-    return true;
-  }
-  return false;
-}
-
 class _ImageRegions {
   final Uint8List? leftRegion;
   final Uint8List? centerRegion;
@@ -37,7 +25,7 @@ class GradeEntryScreen extends StatefulWidget {
 
 class _GradeEntryScreenState extends State<GradeEntryScreen> {
   String _fileName = "لم يتم اختيار ملف الكنترول بعد";
-  String? _selectedFilePath; // هذا هو الملف الذي سيتم التعامل معه
+  String? _selectedFilePath; // المسار الحقيقي للملف المختار
   List<String> _subjects = [];
   String? _selectedSubject;
   bool _isLoading = false;
@@ -59,26 +47,13 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   px.Excel? _excelInstance;
 
-  // ===================== دوال التعامل مع المسار المخزن =====================
-  Future<String?> _getStoredFolderPath() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('main_folder_path');
-  }
-
-  Future<void> _saveFolderPath(String path) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('main_folder_path', path);
-  }
-
-  // ===================== اختيار المجلد الرئيسي =====================
-  Future<void> _pickMainFolder() async {
-    final String? selectedFolder = await FilePicker.platform.getDirectoryPath();
-    if (selectedFolder == null) return;
-
-    await _saveFolderPath(selectedFolder);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('✅ تم تحديد المجلد الرئيسي: $selectedFolder')),
-    );
+  // ===================== دوال الصلاحيات =====================
+  Future<void> _requestPermissions() async {
+    await Permission.storage.request();
+    await Permission.camera.request();
+    if (await Permission.manageExternalStorage.request().isGranted) {
+      debugPrint("تم الحصول على صلاحية إدارة الملفات الشاملة");
+    }
   }
 
   // ===================== تحميل آخر ملف مستخدم =====================
@@ -113,14 +88,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     super.dispose();
   }
 
-  Future<void> _requestPermissions() async {
-    await Permission.storage.request();
-    await Permission.camera.request();
-    if (await Permission.manageExternalStorage.request().isGranted) {
-      debugPrint("تم الحصول على صلاحية إدارة الملفات الشاملة");
-    }
-  }
-
+  // ===================== قراءة ملف Excel =====================
   Future<void> _parseExcelFile(String filePath) async {
     try {
       final bytes = await File(filePath).readAsBytes();
@@ -157,7 +125,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== اختيار ملف Excel =====================
+  // ===================== اختيار ملف Excel (بدون نسخ) =====================
   Future<void> _pickAndParseExcel() async {
     await _requestPermissions();
     setState(() { _isLoading = true; });
@@ -165,7 +133,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xlsx', 'xls'],
+        allowedExtensions: ['xlsx', 'xls', 'xlsm', 'xlsb'],
       );
 
       if (result == null || result.files.single.path == null) {
@@ -174,89 +142,15 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       }
 
       final String sourcePath = result.files.single.path!;
-      final String fileName = result.files.single.name;
 
-      // استرجاع المجلد الرئيسي المخزن
-      String? mainFolder = await _getStoredFolderPath();
+      // استخدم الملف في مكانه الأصلي مباشرة (بدون نسخ)
+      await _parseExcelFile(sourcePath);
 
-      // إذا لم يكن هناك مجلد رئيسي، نطلب من المستخدم اختياره
-      if (mainFolder == null) {
-        final bool pickFolder = await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('📁 تحديد المجلد الرئيسي'),
-            content: const Text('لم تقم بتحديد مجلد رئيسي بعد. هل تريد اختيار مجلد لحفظ الملفات الآن؟'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('لا'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('نعم'),
-              ),
-            ],
-          ),
-        ) ?? false;
-
-        if (pickFolder) {
-          await _pickMainFolder();
-          mainFolder = await _getStoredFolderPath();
-        }
-      }
-
-      // إذا كان هناك مجلد رئيسي، نعطي خيار النسخ إليه أو استخدام الموقع الحالي
-      if (mainFolder != null) {
-        final bool copyToMain = await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('📂 نسخ الملف'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('المجلد الرئيسي الحالي:'),
-                Text(mainFolder, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                const Text('هل تريد نسخ الملف إلى هذا المجلد؟'),
-                const Text('(اختر "لا" لاستخدام الملف من موقعه الحالي)'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('لا، استخدم الموقع الحالي'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('نعم، انسخ'),
-              ),
-            ],
-          ),
-        ) ?? false;
-
-        if (copyToMain) {
-          final String targetPath = '$mainFolder/$fileName';
-          if (await File(targetPath).exists()) {
-            await File(targetPath).delete();
-          }
-          await File(sourcePath).copy(targetPath);
-          await _parseExcelFile(targetPath);
-          _showSnackBar('✅ تم نسخ الملف إلى: $targetPath');
-        } else {
-          await _parseExcelFile(sourcePath);
-          _showSnackBar('✅ تم استخدام الملف من موقعه الحالي');
-        }
-      } else {
-        // لا يوجد مجلد رئيسي، نستخدم الملف من موقعه الحالي
-        await _parseExcelFile(sourcePath);
-        _showSnackBar('✅ تم استخدام الملف من موقعه الحالي');
-      }
-
-      // حفظ المسار الأخير للملف
+      // حفظ المسار في SharedPreferences للاستخدام لاحقاً
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('last_excel_file', _selectedFilePath!);
+      await prefs.setString('last_excel_file', sourcePath);
 
+      _showSnackBar('✅ تم اختيار الملف من: $sourcePath');
     } catch (e) {
       _showSnackBar("حدث خطأ أثناء المعالجة: $e");
     } finally {
@@ -264,7 +158,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== باقي الدوال (بدون تغيير) =====================
+  // ===================== معالجة الأرقام العربية =====================
   String _convertArabicHindiDigits(String input) {
     const arabicDigits = {
       '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
@@ -283,6 +177,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     return match?.group(0) ?? '';
   }
 
+  // ===================== قص الصورة إلى مناطق =====================
   Future<_ImageRegions?> _cropImageRegions(Uint8List imageBytes, Size imageSize) async {
     try {
       final img.Image? fullImage = img.decodeImage(imageBytes);
@@ -326,6 +221,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
+  // ===================== معالجة الصورة الملتقطة =====================
   Future<void> _processCapturedImage(BarcodeCapture capture) async {
     if (capture.barcodes.isEmpty || capture.barcodes.first.rawValue == null) return;
 
@@ -394,7 +290,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
-  // ===================== حفظ الدرجة في Excel (باستخدام المسار المخزن) =====================
+  // ===================== حفظ الدرجة في Excel (كتابة مباشرة على الملف الأصلي) =====================
   Future<void> _saveGradeToExcel() async {
     if (_excelInstance == null || _selectedFilePath == null) {
       _showSnackBar("⚠️ خطأ: لم يتم تحميل ملف إكسيل بعد!");
@@ -408,6 +304,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       bool targetFound = false;
       int subjectColumnIndex = 4 + _subjects.indexOf(_selectedSubject!);
 
+      // البحث عن الطالب في العمود D
       for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
         var cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex)).value;
 
@@ -443,6 +340,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
         return;
       }
 
+      // ترميز الملف
       final List<int>? fileBytesList = _excelInstance!.encode();
       if (fileBytesList == null) {
         _showSnackBar("❌ فشل في ترميز الملف");
@@ -451,143 +349,73 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       }
       final Uint8List fileBytes = Uint8List.fromList(fileBytesList);
 
-      // ===== المسار النهائي (نستخدم الملف المختار حالياً) =====
+      // ===== الكتابة مباشرة على الملف الأصلي =====
       final String currentPath = _selectedFilePath!;
+      final File targetFile = File(currentPath);
 
-      // تأكيد الحفظ
-      final bool confirmSave = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('📁 تأكيد الحفظ'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('سيتم حفظ الدرجات في الملف التالي:'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  currentPath,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text('هل هذا هو الملف الذي تريد التعديل عليه؟'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),  // ===================== حفظ الدرجة في Excel (باستخدام Storage Access Framework) =====================
-Future<void> _saveGradeToExcel() async {
-  if (_excelInstance == null || _selectedFilePath == null) {
-    _showSnackBar("⚠️ خطأ: لم يتم تحميل ملف إكسيل بعد!");
-    return;
-  }
+      bool saved = false;
 
-  setState(() { _isLoading = true; });
-
-  try {
-    var sheet = _excelInstance!.tables.values.first;
-    bool targetFound = false;
-    int subjectColumnIndex = 4 + _subjects.indexOf(_selectedSubject!);
-
-    // 1. البحث عن الرقم السري في الملف
-    for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
-      var cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex)).value;
-
-      if (cellD.toString().trim() == _secretIdResult.trim()) {
-        targetFound = true;
-
-        var existingValue = sheet.cell(px.CellIndex.indexByColumnRow(
-          columnIndex: subjectColumnIndex,
-          rowIndex: rowIndex
-        )).value;
-
-        if (existingValue != null && existingValue.toString().trim().isNotEmpty) {
+      try {
+        // محاولة الكتابة المباشرة
+        if (await targetFile.exists()) {
+          await targetFile.writeAsBytes(fileBytes, flush: true);
+          saved = true;
+        } else {
+          _showSnackBar("❌ الملف غير موجود في المسار المحدد!");
           setState(() { _isLoading = false; });
-          _showDialogAlert(
-            title: "⚠️ تنبيه: رصد مسبق!",
-            message: "هذا الطالب (الرقم السري: $_secretIdResult) تم رصد درجته مسبقاً في هذه المادة وهي (${existingValue.toString()}).",
-            shouldCloseCamera: false,
-          );
           return;
         }
-
-        sheet.cell(px.CellIndex.indexByColumnRow(
-          columnIndex: subjectColumnIndex,
-          rowIndex: rowIndex
-        )).value = px.TextCellValue(_gradeController.text);
-        break;
+      } catch (e) {
+        print('فشلت الكتابة المباشرة: $e');
+        // إذا فشلت الكتابة المباشرة، نستخدم FilePicker كحل احتياطي
+        try {
+          final String? newPath = await FilePicker.platform.saveFile(
+            dialogTitle: 'حفظ ملف الأكسيل المحدث',
+            fileName: currentPath.split('/').last,
+            bytes: fileBytes,
+          );
+          if (newPath != null) {
+            // تحديث المسار إلى الموقع الجديد
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('last_excel_file', newPath);
+            setState(() {
+              _selectedFilePath = newPath;
+              _fileName = newPath.split('/').last;
+            });
+            saved = true;
+            _showSnackBar("✅ تم حفظ الدرجة في موقع جديد: $newPath");
+          } else {
+            _showSnackBar("❌ تم إلغاء الحفظ");
+          }
+        } catch (e2) {
+          _showSnackBar("❌ فشل حفظ الملف حتى بالطريقة الاحتياطية: $e2");
+        }
       }
-    }
 
-    if (!targetFound) {
-      _showSnackBar("❌ لم يتم العثور على الرقم السري ($_secretIdResult) في الملف!");
+      if (saved) {
+        setState(() {
+          _gradedStudents += 1;
+          _secretIdResult = "سيظهر هنا الرقم السري";
+          _gradeController.clear();
+          _isScanningActive = false;
+        });
+        // إذا تم الحفظ بنجاح (بالمباشرة أو الاحتياطي)
+        if (!saved) {
+          // تم التعامل مع الفشل أعلاه
+        } else {
+          _showSnackBar("✅ تم حفظ الدرجة بنجاح في: $currentPath");
+        }
+      }
+
+    } catch (e) {
+      _showSnackBar("❌ خطأ في الحفظ: $e");
+      print('خطأ الحفظ: $e');
+    } finally {
       setState(() { _isLoading = false; });
-      return;
     }
-
-    // 2. ترميز الملف إلى بايتات
-    final List<int>? fileBytesList = _excelInstance!.encode();
-    if (fileBytesList == null) {
-      _showSnackBar("❌ فشل في ترميز الملف");
-      setState(() { _isLoading = false; });
-      return;
-    }
-    final Uint8List fileBytes = Uint8List.fromList(fileBytesList);
-
-    // 3. الحصول على اسم الملف الأصلي لاستخدامه كاقتراح
-    String originalFileName = _selectedFilePath!.split('/').last;
-
-    // 4. استخدام واجهة حفظ النظام (Storage Access Framework)
-    //    هذه هي المعجزة التي ستحل المشكلة وتعمل على Android 8+ و targetSdk=35
-    String? outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: 'حفظ ملف الأكسيل المحدث',
-      fileName: originalFileName, // اقتراح اسم الملف
-      bytes: fileBytes, // الملف الجاهز للحفظ
-    );
-
-    // 5. التحقق من نتيجة الحفظ
-    if (outputPath == null) {
-      // المستخدم ألغى عملية الحفظ
-      _showSnackBar("❌ تم إلغاء الحفظ من قبل المستخدم");
-      setState(() { _isLoading = false; });
-      return;
-    }
-
-    // 6. نجاح الحفظ! تحديث المسار المخزن في الذاكرة
-    setState(() {
-      _selectedFilePath = outputPath; // تحديث المسار إلى الموقع الجديد (مهم للمزامنة)
-      _gradedStudents += 1;
-      _secretIdResult = "سيظهر هنا الرقم السري";
-      _gradeController.clear();
-      _isScanningActive = false;
-    });
-
-    // حفظ المسار الجديد في SharedPreferences لاستخدامه في المرات القادمة
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_excel_file', outputPath);
-
-    _showSnackBar("✅ تم حفظ الدرجة بنجاح في: $outputPath");
-
-  } catch (e) {
-    _showSnackBar("❌ خطأ في الحفظ: $e");
-    print('خطأ الحفظ: $e');
-  } finally {
-    setState(() { _isLoading = false; });
   }
-}
 
-  // ===================== دوال مساعدة وبناء الواجهة =====================
+  // ===================== دوال مساعدة =====================
   void _showDialogAlert({required String title, required String message, required bool shouldCloseCamera}) {
     showDialog(
       context: context,
@@ -634,6 +462,7 @@ Future<void> _saveGradeToExcel() async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ===================== واجهة المستخدم =====================
   @override
   Widget build(BuildContext context) {
     Color appBarColor = Colors.lightBlue.shade300;
@@ -652,9 +481,9 @@ Future<void> _saveGradeToExcel() async {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.folder),
-            onPressed: _pickMainFolder,
-            tooltip: 'تحديد المجلد الرئيسي',
+            icon: const Icon(Icons.folder_open),
+            onPressed: _pickAndParseExcel,
+            tooltip: 'اختيار ملف Excel',
           ),
           IconButton(
             icon: Icon(_isTorchOn ? Icons.flash_on : Icons.flash_off),
