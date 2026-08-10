@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.automation_exams"
+    namespace = "com.example.exams_automation"
     compileSdk = 35
 
     compileOptions {
@@ -18,7 +18,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.scanner_grades_control"
+        applicationId = "com.example.exams_automation"
         minSdk = 21
         targetSdk = 35
         versionCode = 1
