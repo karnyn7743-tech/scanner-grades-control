@@ -7,6 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _ImageRegions {
@@ -53,6 +54,36 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     if (await Permission.manageExternalStorage.request().isGranted) {
       debugPrint("تم الحصول على صلاحية إدارة الملفات الشاملة");
     }
+  }
+
+  /// استخراج المسار العام المباشر للملف في ذاكرة الهاتف (Download/درجات الطلاب)
+  Future<File> _getPublicExcelFile(String originalFileName, String sourceCachePath) async {
+    Directory? externalDir = await getExternalStorageDirectory();
+    String newPath = "";
+    List<String> paths = externalDir!.path.split("/");
+    for (int x = 1; x < paths.length; x++) {
+      String folder = paths[x];
+      if (folder != "Android") {
+        newPath += "/" + folder;
+      } else {
+        break;
+      }
+    }
+
+    Directory targetDir = Directory("$newPath/Download/درجات الطلاب");
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+
+    File destinationFile = File("${targetDir.path}/$originalFileName");
+    
+    // إذا لم يكن الملف موجوداً في مجلد درجات الطلاب العام، يتم نسخه من الكاش المؤقت إليه
+    if (!await destinationFile.exists()) {
+      final sourceBytes = await File(sourceCachePath).readAsBytes();
+      await destinationFile.writeAsBytes(sourceBytes, flush: true);
+    }
+
+    return destinationFile;
   }
 
   Future<void> _loadLastExcelFile() async {
@@ -137,13 +168,18 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
         return;
       }
 
-      final String sourcePath = result.files.single.path!;
-      await _parseExcelFile(sourcePath);
+      final String cachePath = result.files.single.path!;
+      final String originalFileName = result.files.single.name;
+
+      // الحصول على ملف التخزين الداخلي العام المباشر
+      final File publicFile = await _getPublicExcelFile(originalFileName, cachePath);
+
+      await _parseExcelFile(publicFile.path);
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('last_excel_file', sourcePath);
+      await prefs.setString('last_excel_file', publicFile.path);
 
-      _showSnackBar('✅ تم اختيار الملف من: $sourcePath');
+      _showSnackBar('✅ تم ربط الملف المباشر: ${publicFile.path}');
     } catch (e) {
       _showSnackBar("حدث خطأ أثناء المعالجة: $e");
     } finally {
@@ -339,13 +375,8 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       final String currentPath = _selectedFilePath!;
       final File targetFile = File(currentPath);
 
-      if (await targetFile.exists()) {
-        await targetFile.writeAsBytes(fileBytes, flush: true);
-      } else {
-        _showSnackBar("❌ الملف غير موجود في المسار المحدد!");
-        setState(() { _isLoading = false; });
-        return;
-      }
+      // الكتابة المباشرة وتحديث الملف الاصلي في ذاكرة الهاتف
+      await targetFile.writeAsBytes(fileBytes, flush: true);
 
       if (await targetFile.exists() && await targetFile.length() > 0) {
         setState(() {
