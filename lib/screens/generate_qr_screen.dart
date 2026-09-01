@@ -6,6 +6,7 @@ import 'package:excel/excel.dart' as px;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qrscan_plus/qrscan_plus.dart' as scanner;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 class GenerateQRScreen extends StatefulWidget {
   const GenerateQRScreen({super.key});
@@ -19,6 +20,27 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
   bool _isLoading = false;
   List<Map<String, String>> _students = [];
   String _statusMessage = '';
+
+  // ===================== جلب مجلد درجات الطلاب الرئيسي =====================
+  Future<Directory> _getPublicDirectory() async {
+    Directory? externalDir = await getExternalStorageDirectory();
+    String newPath = "";
+    List<String> paths = externalDir!.path.split("/");
+    for (int x = 1; x < paths.length; x++) {
+      String folder = paths[x];
+      if (folder != "Android") {
+        newPath += "/" + folder;
+      } else {
+        break;
+      }
+    }
+
+    Directory targetDir = Directory("$newPath/Download/درجات الطلاب");
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
+    }
+    return targetDir;
+  }
 
   // ===================== تحميل آخر ملف مستخدم =====================
   Future<void> _loadLastExcelFile() async {
@@ -57,8 +79,21 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
       );
 
       if (result != null && result.files.single.path != null) {
-        _excelPath = result.files.single.path!;
-        // حفظ المسار في SharedPreferences
+        final String cachePath = result.files.single.path!;
+        final String fileName = result.files.single.name;
+
+        // تحديد وحفظ المسار الرئيسي داخل مجلد درجات الطلاب
+        final Directory publicDir = await _getPublicDirectory();
+        final File destinationFile = File("${publicDir.path}/$fileName");
+
+        if (!await destinationFile.exists()) {
+          final sourceBytes = await File(cachePath).readAsBytes();
+          await destinationFile.writeAsBytes(sourceBytes, flush: true);
+        }
+
+        _excelPath = destinationFile.path;
+
+        // حفظ المسار المباشر في SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('last_excel_file', _excelPath!);
         await _parseExcel();
@@ -177,9 +212,9 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
     setState(() { _isLoading = true; });
 
     try {
-      // إنشاء مجلد qr_pict في نفس مسار ملف Excel
-      final String dirPath = File(_excelPath!).parent.path;
-      final String qrFolderPath = '$dirPath/qr_pict';
+      // إنشاء مجلد qr_pict مباشرة في مجلد درجات الطلاب الرئيسي (بجوار ملف الإكسيل)
+      final Directory publicDir = await _getPublicDirectory();
+      final String qrFolderPath = '${publicDir.path}/qr_pict';
       final Directory qrFolder = Directory(qrFolderPath);
 
       if (await qrFolder.exists()) {
@@ -197,7 +232,7 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
 
         final String filePath = '$qrFolderPath/$id.png';
         final File file = File(filePath);
-        await file.writeAsBytes(qrBytes);
+        await file.writeAsBytes(qrBytes, flush: true);
 
         count++;
       }
