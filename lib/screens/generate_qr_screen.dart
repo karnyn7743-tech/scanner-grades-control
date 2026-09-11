@@ -21,21 +21,37 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
   List<Map<String, String>> _students = [];
   String _statusMessage = '';
 
+  // ===================== طلب الأذونات الصريحة وفتح الإعدادات =====================
+  Future<void> _requestPermissions() async {
+    await Permission.storage.request();
+    
+    if (await Permission.manageExternalStorage.isDenied || 
+        await Permission.manageExternalStorage.isPermanentlyDenied) {
+      final status = await Permission.manageExternalStorage.request();
+      if (!status.isGranted) {
+        // فتح صفحة إعدادات التطبيق ليتسنى للمستخدم منح "إدارة جميع الملفات"
+        await openAppSettings();
+      }
+    }
+  }
+
   // ===================== جلب مجلد درجات الطلاب الرئيسي =====================
   Future<Directory> _getPublicDirectory() async {
-    // المسار المباشر المضمون لمجلد التنزيلات العام في أندرويد
-    const String downloadPath = "/storage/emulated/0/Download";
-    final Directory targetDir = Directory("$downloadPath/درجات الطلاب");
+    Directory? baseDir;
 
-    if (await Permission.manageExternalStorage.isGranted || await Permission.storage.isGranted) {
-      if (!await targetDir.exists()) {
-        await targetDir.create(recursive: true);
+    // المحاولة 1: استخدام المجلد المستنداتي الخاص بالتطبيق للضمان الشامل بدون قيود النظام
+    if (Platform.isAndroid) {
+      final Directory downloadDir = Directory('/storage/emulated/0/Download');
+      if (await downloadDir.exists()) {
+        baseDir = downloadDir;
       }
-    } else {
-      await Permission.manageExternalStorage.request();
-      if (!await targetDir.exists()) {
-        await targetDir.create(recursive: true);
-      }
+    }
+
+    baseDir ??= await getApplicationDocumentsDirectory();
+
+    final Directory targetDir = Directory("${baseDir.path}/درجات الطلاب");
+    if (!await targetDir.exists()) {
+      await targetDir.create(recursive: true);
     }
 
     return targetDir;
@@ -60,13 +76,6 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
     super.initState();
     _requestPermissions();
     _loadLastExcelFile();
-  }
-
-  Future<void> _requestPermissions() async {
-    await Permission.storage.request();
-    if (await Permission.manageExternalStorage.isDenied) {
-      await Permission.manageExternalStorage.request();
-    }
   }
 
   // ===================== اختيار ملف Excel =====================
@@ -213,7 +222,6 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
     setState(() { _isLoading = true; });
 
     try {
-      // إنشاء مجلد qr_pict مباشرة في مجلد درجات الطلاب الرئيسي (بجوار ملف الإكسيل)
       final Directory publicDir = await _getPublicDirectory();
       final String qrFolderPath = '${publicDir.path}/qr_pict';
       final Directory qrFolder = Directory(qrFolderPath);
@@ -228,7 +236,6 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
         final String id = student['id']!;
         final String secret = student['secret']!;
 
-        // توليد QR باستخدام qrscan_plus
         final Uint8List qrBytes = await scanner.generateBarCode(secret);
 
         final String filePath = '$qrFolderPath/$id.png';
