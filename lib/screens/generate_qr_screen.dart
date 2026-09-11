@@ -23,22 +23,21 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
 
   // ===================== جلب مجلد درجات الطلاب الرئيسي =====================
   Future<Directory> _getPublicDirectory() async {
-    Directory? externalDir = await getExternalStorageDirectory();
-    String newPath = "";
-    List<String> paths = externalDir!.path.split("/");
-    for (int x = 1; x < paths.length; x++) {
-      String folder = paths[x];
-      if (folder != "Android") {
-        newPath += "/" + folder;
-      } else {
-        break;
+    // المسار المباشر المضمون لمجلد التنزيلات العام في أندرويد
+    const String downloadPath = "/storage/emulated/0/Download";
+    final Directory targetDir = Directory("$downloadPath/درجات الطلاب");
+
+    if (await Permission.manageExternalStorage.isGranted || await Permission.storage.isGranted) {
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+    } else {
+      await Permission.manageExternalStorage.request();
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
       }
     }
 
-    Directory targetDir = Directory("$newPath/Download/درجات الطلاب");
-    if (!await targetDir.exists()) {
-      await targetDir.create(recursive: true);
-    }
     return targetDir;
   }
 
@@ -65,7 +64,9 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
 
   Future<void> _requestPermissions() async {
     await Permission.storage.request();
-    await Permission.manageExternalStorage.request();
+    if (await Permission.manageExternalStorage.isDenied) {
+      await Permission.manageExternalStorage.request();
+    }
   }
 
   // ===================== اختيار ملف Excel =====================
