@@ -3,10 +3,12 @@ import 'dart:typed_data';
 import 'package:google_ml_kit/google_ml_kit.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
+import 'digit_recognizer.dart';  // ← إضافة واحدة فقط
 
 class OCRService {
   late TextRecognizer _textRecognizer;
   bool _isInitialized = false;
+  final DigitRecognizer _digitRecognizer = DigitRecognizer();  // ← إضافة واحدة فقط
 
   OCRService() {
     _initRecognizer();
@@ -23,6 +25,7 @@ class OCRService {
       // استخدام النموذج الافتراضي
       _textRecognizer = GoogleMlKit.vision.textRecognizer();
     }
+    await _digitRecognizer.init();  // ← إضافة واحدة فقط
     _isInitialized = true;
   }
 
@@ -68,6 +71,19 @@ class OCRService {
 
   /// التعرف على الأرقام فقط من الصورة (مخصص للدرجات)
   Future<String?> recognizeGradeFromImage(img.Image image) async {
+    // ← الجزء الوحيد المضاف: محاولة TFLite أولاً
+    if (_digitRecognizer.isReady) {
+      try {
+        final tfliteResult = await _digitRecognizer.recognizeGrade(image);
+        if (tfliteResult.isNotEmpty) {
+          return tfliteResult;
+        }
+      } catch (e) {
+        print('TFLite error: $e');
+      }
+    }
+    // ← نهاية الإضافة
+
     final text = await recognizeTextFromImage(image);
     if (text == null) return null;
 
@@ -122,5 +138,6 @@ class OCRService {
   /// إغلاق الـ recognizer
   void dispose() {
     _textRecognizer.close();
+    _digitRecognizer.dispose();  // ← إضافة واحدة فقط
   }
 }
