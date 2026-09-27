@@ -34,14 +34,16 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK مباشرة عبر Gradle لتفادي أخطاء مسار المخرجات مع كشف تقرير الـ Manifest
+      # 5. بناء تطبيق APK مباشرة عبر Gradle مع استخراج تقارير أخطاء الـ Manifest بدقة
       - name: Build APK via Gradle
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace || {
-            echo "=== MANIFEST MERGER ERROR REPORT ==="
-            find app/build/outputs/logs -name "*manifest*" -exec cat {} + 2>/dev/null || true
+            echo "================== MANIFEST LOG DETAILS =================="
+            grep -rn "Error:" app/build/intermediates/ 2>/dev/null || true
+            find app/build/ -name "*.txt" -exec grep -H "Manifest" {} + 2>/dev/null || true
+            find app/build/ -name "*merger*report*" -exec head -n 100 {} + 2>/dev/null || true
             exit 1
           }
           cd ..
