@@ -55,10 +55,15 @@ kotlin {
     jvmToolchain(17)
 }
 
+// حل مشكلة تكرار Namespace الخاص بـ tensorflow-lite
 configurations.all {
     resolutionStrategy {
+        // إجبار كل التبعات على استخدام نسخة موحدة مستقرة لا تحوي تعارضات في الـ Manifest
         force("org.tensorflow:tensorflow-lite:2.14.0")
         force("org.tensorflow:tensorflow-lite-api:2.14.0")
         force("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+        force("org.tensorflow:tensorflow-lite-gpu-api:2.14.0")
     }
+    // استبعاد تكرار tensorflow-lite القديم إن وُجد كحزمة فرعية متداخلة
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-gpu")
 }
