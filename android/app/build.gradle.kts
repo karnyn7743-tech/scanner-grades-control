@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -45,4 +47,13 @@ flutter {
 
 kotlin {
     jvmToolchain(17)
+}
+
+// ضمان تصدير ونسخ ملف الـ APK للمسار القياسي الذي تتوقعه أداة فلاتر
+android.applicationVariants.all {
+    val variant = this
+    variant.outputs.all {
+        val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+        output?.outputFileName = "app-${variant.name}.apk"
+    }
 }
