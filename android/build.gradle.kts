@@ -3,26 +3,9 @@ allprojects {
         sourceCompatibility = JavaVersion.VERSION_17.toString()
         targetCompatibility = JavaVersion.VERSION_17.toString()
     }
-    configurations.all {
-        resolutionStrategy {
-            force("org.tensorflow:tensorflow-lite:2.14.0")
-            force("org.tensorflow:tensorflow-lite-api:2.14.0")
-            force("org.tensorflow:tensorflow-lite-gpu:2.14.0")
-            force("org.tensorflow:tensorflow-lite-gpu-api:2.14.0")
-        }
-    }
 }
 
 subprojects {
-    project.configurations.all {
-        resolutionStrategy.eachDependency {
-            if (requested.group == "org.tensorflow") {
-                useVersion("2.14.0")
-                because("توحيد إصدار tensorflow-lite لمنع تكرار مساحة الأسماء في الـ Manifest")
-            }
-        }
-    }
-
     afterEvaluate {
         project.plugins.withId("kotlin-android") {
             configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> {
