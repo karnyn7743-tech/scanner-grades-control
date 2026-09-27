@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -8,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.exams_automation"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     compileOptions {
@@ -27,8 +25,8 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
-            isMinifyEnabled = false      // تعطيل R8 مؤقتاً
-            isShrinkResources = false    // تعطيل تقليص الموارد
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -45,15 +43,6 @@ flutter {
     source = "../.."
 }
 
-// ضبط إصدار الـ JVM لمهام Kotlin عبر الـ DSL الجديد (compilerOptions)
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-    }
-}
-
-// ضبط إصدار مهام JavaCompile
-tasks.withType<JavaCompile>().configureEach {
-    sourceCompatibility = JavaVersion.VERSION_17.toString()
-    targetCompatibility = JavaVersion.VERSION_17.toString()
+kotlin {
+    jvmToolchain(17)
 }
