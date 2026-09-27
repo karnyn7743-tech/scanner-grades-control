@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.example.exams_automation"
-    compileSdk = 35
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -19,8 +20,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.exams_automation"
-        minSdk = 21
-        targetSdk = 35
+        minSdk = 23
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -46,3 +47,14 @@ flutter {
     source = "../.."
 }
 
+// إجبار كافة مهام التحويل والتجميع على استخدام Java 17 لتوحيد بيئة عمل المترجمين
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    sourceCompatibility = JavaVersion.VERSION_17.toString()
+    targetCompatibility = JavaVersion.VERSION_17.toString()
+}
