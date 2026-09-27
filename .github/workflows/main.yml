@@ -1,4 +1,4 @@
-name: wifi_p2p_app
+name: exams_automation
 
 on:
   push:
