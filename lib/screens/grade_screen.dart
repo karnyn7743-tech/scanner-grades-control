@@ -17,14 +17,14 @@ class _ImageRegions {
   _ImageRegions({this.leftRegion, this.centerRegion, this.rightRegion});
 }
 
-class GradeScreen extends StatefulWidget {
-  const GradeScreen({super.key});
+class GradeEntryScreen extends StatefulWidget {
+  const GradeEntryScreen({super.key});
 
   @override
-  State<GradeScreen> createState() => _GradeScreenState();
+  State<GradeEntryScreen> createState() => _GradeEntryScreenState();
 }
 
-class _GradeScreenState extends State<GradeScreen> {
+class _GradeEntryScreenState extends State<GradeEntryScreen> {
   String _fileName = "لم يتم اختيار ملف الكنترول بعد";
   String? _selectedFilePath;
   List<String> _subjects = [];
@@ -45,8 +45,7 @@ class _GradeScreenState extends State<GradeScreen> {
   bool _isScanningActive = false;
   bool _isTorchOn = false;
 
-  // استخدام المحرك مع تهيئة متعددة اللغات لضمان التقاط الأرقام الهندية
-  late final TextRecognizer _textRecognizer;
+  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
   px.Excel? _excelInstance;
 
   Future<void> _requestPermissions() async {
@@ -57,6 +56,7 @@ class _GradeScreenState extends State<GradeScreen> {
     }
   }
 
+  /// استخراج المسار العام المباشر للملف في ذاكرة الهاتف (Download/درجات الطلاب)
   Future<File> _getPublicExcelFile(String originalFileName, String sourceCachePath) async {
     Directory? externalDir = await getExternalStorageDirectory();
     String newPath = "";
@@ -64,7 +64,7 @@ class _GradeScreenState extends State<GradeScreen> {
     for (int x = 1; x < paths.length; x++) {
       String folder = paths[x];
       if (folder != "Android") {
-        newPath += "/" + folder;
+        newPath += "/$folder";
       } else {
         break;
       }
@@ -97,14 +97,13 @@ class _GradeScreenState extends State<GradeScreen> {
         await _parseExcelFile(lastFile);
       }
     } catch (e) {
-      print('خطأ في تحميل آخر ملف: $e');
+      debugPrint('خطأ في تحميل آخر ملف: $e');
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     _requestPermissions();
     _loadLastExcelFile();
   }
@@ -186,7 +185,7 @@ class _GradeScreenState extends State<GradeScreen> {
     }
   }
 
-  /// تحويل شامل للأرقام الهندية والعربية والرموز
+  /// تحويل شامل لكافة الأرقام الهندية والمشرقية إلى إنجليزية
   String _convertArabicHindiDigits(String input) {
     const digitsMap = {
       '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
@@ -207,26 +206,26 @@ class _GradeScreenState extends State<GradeScreen> {
     return match?.group(0) ?? '';
   }
 
-  /// معالجة مسبقة للصورة لدعم اللون الأحمر وقص المربعات بدقة متناهية
+  /// معالجة مسبقة تعزز وضوح الخط الأحمر والتباين البصري للأرقام المكتوبة يدوياً
   img.Image _preprocessImageForOcr(img.Image src) {
-    // تعزيز اللون الأحمر والأزرق وتحويلهما لأسود داكن لمساعدة المحرك
     final processed = img.Image.from(src);
     for (int y = 0; y < processed.height; y++) {
       for (int x = 0; x < processed.width; x++) {
         final pixel = processed.getPixel(x, y);
-        final r = pixel.r;
-        final g = pixel.g;
-        final b = pixel.b;
+        final num r = pixel.r;
+        final num g = pixel.g;
+        final num b = pixel.b;
 
-        // إذا كان اللون أحمر (R أعلى بكثير من G و B)
-        if (r > 100 && g < 90 && b < 90) {
-          processed.setPixelRgb(x, y, 0, 0, 0); // جعله أسود ناصع
+        // اكتشاف اللون الأحمر وتحويله إلى خط أسود ناصع
+        if (r > 90 && (r - g) > 25 && (r - b) > 25) {
+          processed.setPixelRgb(x, y, 0, 0, 0);
         }
       }
     }
     return processed;
   }
 
+  /// قص الأقسام الثلاثة مع مراعاة الورقة المفتوحة بدون حدود مربعات
   Future<_ImageRegions?> _cropImageRegions(Uint8List imageBytes, Size imageSize) async {
     try {
       img.Image? fullImage = img.decodeImage(imageBytes);
@@ -238,16 +237,11 @@ class _GradeScreenState extends State<GradeScreen> {
       final int height = fullImage.height;
       final int regionWidth = width ~/ 3;
 
-      // قص مع اقتطاع 12% من الحواف للتخلص من إطار المربع الأسود والتركيز على الرقم فقط
-      int insetX = (regionWidth * 0.12).toInt();
-      int insetY = (height * 0.15).toInt();
-      int cropW = regionWidth - (insetX * 2);
-      int cropH = height - (insetY * 2);
-
-      var leftImg = img.copyCrop(fullImage, x: insetX, y: insetY, width: cropW, height: cropH);
+      var leftImg = img.copyCrop(fullImage, x: 0, y: 0, width: regionWidth, height: height);
       var centerImg = img.copyCrop(fullImage, x: regionWidth, y: 0, width: regionWidth, height: height);
-      var rightImg = img.copyCrop(fullImage, x: (regionWidth * 2) + insetX, y: insetY, width: cropW, height: cropH);
+      var rightImg = img.copyCrop(fullImage, x: regionWidth * 2, y: 0, width: regionWidth, height: height);
 
+      // تطبيق تعزيز الحبر لليمين واليسار
       leftImg = _preprocessImageForOcr(leftImg);
       rightImg = _preprocessImageForOcr(rightImg);
 
@@ -257,7 +251,7 @@ class _GradeScreenState extends State<GradeScreen> {
         rightRegion: Uint8List.fromList(img.encodePng(rightImg)),
       );
     } catch (e) {
-      print('خطأ في القص: $e');
+      debugPrint('خطأ في القص: $e');
       return null;
     }
   }
@@ -276,7 +270,7 @@ class _GradeScreenState extends State<GradeScreen> {
 
       return recognized.text.trim();
     } catch (e) {
-      print('خطأ في OCR: $e');
+      debugPrint('خطأ في OCR: $e');
       return '';
     }
   }
@@ -308,14 +302,14 @@ class _GradeScreenState extends State<GradeScreen> {
     if (regions.rightRegion != null) {
       final rightText = await _recognizeTextFromBytes(regions.rightRegion!);
       subjectCode = _extractNumber(rightText);
-      print('📚 رقم المادة المقروء: $subjectCode (النص الخام: $rightText)');
+      debugPrint('📚 رقم المادة المقروء: $subjectCode (النص الأصلي: $rightText)');
     }
 
     String gradeText = '';
     if (regions.leftRegion != null) {
       final leftText = await _recognizeTextFromBytes(regions.leftRegion!);
       gradeText = _extractNumber(leftText);
-      print('⭐ الدرجة المقروءة: $gradeText (النص الخام: $leftText)');
+      debugPrint('⭐ الدرجة المقروءة: $gradeText (النص الأصلي: $leftText)');
     }
 
     if (_selectedSubject == null) {
@@ -326,11 +320,11 @@ class _GradeScreenState extends State<GradeScreen> {
 
     int currentSubjectIndex = _subjects.indexOf(_selectedSubject!) + 1;
 
-    // التحقق الصارم: التنبيه إذا كان الرقم فارغاً أو غير متطابق
+    // تدقيق كود المادة: التنبيه حال عدم القراءة أو عدم التطابق
     if (subjectCode.isEmpty) {
       _showDialogAlert(
         title: "⚠️ تعذر قراءة كود المادة",
-        message: "لم يتم التعرف على كود المادة في الورقة. تأكد من وضوح المربع الأيمن المكتوب فيه رقم المادة ($currentSubjectIndex).",
+        message: "لم يتم التعرف على كود المادة في يمين الورقة. تأكد من وضوح الرقم ($currentSubjectIndex).",
         shouldCloseCamera: false,
       );
       return;
@@ -418,6 +412,7 @@ class _GradeScreenState extends State<GradeScreen> {
       final String currentPath = _selectedFilePath!;
       final File targetFile = File(currentPath);
 
+      // الكتابة المباشرة وتحديث الملف الأصلي في ذاكرة الهاتف
       await targetFile.writeAsBytes(fileBytes, flush: true);
 
       if (await targetFile.exists() && await targetFile.length() > 0) {
@@ -434,7 +429,7 @@ class _GradeScreenState extends State<GradeScreen> {
 
     } catch (e) {
       _showSnackBar("❌ خطأ في الحفظ: $e");
-      print('خطأ الحفظ: $e');
+      debugPrint('خطأ الحفظ: $e');
     } finally {
       setState(() { _isLoading = false; });
     }
