@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -6,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.example.exams_automation"
-    compileSdk = 36
+    compileSdk = 35
     ndkVersion = "28.2.13676358"
 
     compileOptions {
@@ -14,14 +16,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     defaultConfig {
         applicationId = "com.example.exams_automation"
         minSdk = 23
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -47,13 +45,14 @@ flutter {
     source = "../.."
 }
 
-// إجبار كافة مهام التحويل والتجميع على استخدام Java 17 لتوحيد بيئة عمل المترجمين
+// ضبط إصدار الـ JVM لمهام Kotlin عبر الـ DSL الجديد (compilerOptions)
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    kotlinOptions {
-        jvmTarget = "17"
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
+// ضبط إصدار مهام JavaCompile
 tasks.withType<JavaCompile>().configureEach {
     sourceCompatibility = JavaVersion.VERSION_17.toString()
     targetCompatibility = JavaVersion.VERSION_17.toString()
