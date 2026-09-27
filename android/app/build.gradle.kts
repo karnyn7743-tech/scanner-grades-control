@@ -36,6 +36,12 @@ android {
         }
     }
 
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
     buildFeatures {
         viewBinding = true
     }
@@ -49,11 +55,10 @@ kotlin {
     jvmToolchain(17)
 }
 
-// ضمان تصدير ونسخ ملف الـ APK للمسار القياسي الذي تتوقعه أداة فلاتر
-android.applicationVariants.all {
-    val variant = this
-    variant.outputs.all {
-        val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-        output?.outputFileName = "app-${variant.name}.apk"
+configurations.all {
+    resolutionStrategy {
+        force("org.tensorflow:tensorflow-lite:2.14.0")
+        force("org.tensorflow:tensorflow-lite-api:2.14.0")
+        force("org.tensorflow:tensorflow-lite-gpu:2.14.0")
     }
 }
