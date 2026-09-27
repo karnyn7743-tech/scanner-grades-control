@@ -34,13 +34,19 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK بصيغة Release
-      - name: Build APK
-        run: flutter build apk --release
+      # 5. بناء تطبيق APK مباشرة عبر Gradle لتفادي أخطاء مسار المخرجات
+      - name: Build APK via Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+          cd ..
+          mkdir -p build/app/outputs/flutter-apk
+          cp android/app/build/outputs/apk/release/app-release.apk build/app/outputs/flutter-apk/app-release.apk
 
       # 6. رفع ملف الـ APK لتنزيله من Artifacts
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
