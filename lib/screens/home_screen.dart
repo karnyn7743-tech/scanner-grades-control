@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'generate_qr_screen.dart';
+import 'exam_paper_generator_screen.dart'; // استيراد شاشة توليد الأوراق
 import 'scan_qr_screen.dart';
 import 'grade_screen.dart';
 
@@ -28,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // 1. الزر الأول
             _buildMainButton(
               context,
               title: 'تكوين QR Code للأرقام السرية للطلاب',
@@ -40,6 +42,22 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const SizedBox(height: 20),
+
+            // 2. الزر الثاني (المضاف في الترتيب الثاني)
+            _buildMainButton(
+              context,
+              title: 'توليد أوراق الاختبارات',
+              icon: Icons.picture_as_pdf,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ExamPaperGeneratorScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+
+            // 3. الزر الثالث
             _buildMainButton(
               context,
               title: 'قراءة الـ QR Code للطلاب',
@@ -52,6 +70,8 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const SizedBox(height: 20),
+
+            // 4. الزر الرابع
             _buildMainButton(
               context,
               title: 'إدخال الدرجات من أوراق الإجابة',
