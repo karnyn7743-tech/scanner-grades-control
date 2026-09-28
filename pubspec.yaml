@@ -24,6 +24,9 @@ dependencies:
   mobile_scanner: ^5.1.0
   qrscan_plus: ^1.0.8
 
+  # ===== توليد ملفات PDF =====
+  pdf: ^3.10.8
+
   # ===== OCR والتعرف على النصوص =====
   google_ml_kit: ^0.18.0
 
@@ -59,3 +62,10 @@ flutter:
   assets:
     - assets/images/
     - assets/models/
+    - assets/fonts/Amiri_Regular.ttf
+
+  # ===== إعدادات الخط العربي للـ PDF =====
+  fonts:
+    - family: Amiri
+      fonts:
+        - asset: assets/fonts/Amiri_Regular.ttf
