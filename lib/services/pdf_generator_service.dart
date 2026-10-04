@@ -139,7 +139,7 @@ class PdfGeneratorService {
                               selectedSubject,
                               style: pw.TextStyle(
                                 font: ttfFont, 
-                                fontSize: 18, 
+                                fontSize: 28, 
                                 fontWeight: pw.FontWeight.bold,
                               ),
                             ),
