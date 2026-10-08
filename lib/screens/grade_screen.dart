@@ -387,10 +387,24 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
             return;
           }
 
+          // معالجة القيمة وحفظها كـ رقم بدلاً من نص
+          final rawGradeStr = _convertArabicHindiDigits(_gradeController.text.trim());
+          final int? intGrade = int.tryParse(rawGradeStr);
+          final double? doubleGrade = double.tryParse(rawGradeStr);
+
+          px.CellValue cellValueToSave;
+          if (intGrade != null) {
+            cellValueToSave = px.IntCellValue(intGrade);
+          } else if (doubleGrade != null) {
+            cellValueToSave = px.DoubleCellValue(doubleGrade);
+          } else {
+            cellValueToSave = px.TextCellValue(_gradeController.text.trim());
+          }
+
           sheet.cell(px.CellIndex.indexByColumnRow(
             columnIndex: subjectColumnIndex,
             rowIndex: rowIndex
-          )).value = px.TextCellValue(_gradeController.text);
+          )).value = cellValueToSave;
           break;
         }
       }
