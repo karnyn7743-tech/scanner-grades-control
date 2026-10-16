@@ -8,7 +8,10 @@ on:
   workflow_dispatch: # يتيح لك تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
 
 jobs:
-  build:
+  # ==========================================
+  # 1. مهمة بناء أندرويد (Android Job)
+  # ==========================================
+  build-android:
     runs-on: ubuntu-latest
 
     steps:
@@ -56,3 +59,41 @@ jobs:
         with:
           name: release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
+
+  # ==========================================
+  # 2. مهمة بناء آيفون (iOS Job)
+  # ==========================================
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      # 1. جلب الكود من GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. إعداد بيئة Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 3. جلب المكتبات
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 4. بناء ملفات iOS بنمط Release بدون توقيع (No Codesign)
+      - name: Build iOS App
+        run: |
+          flutter build ios --release --no-codesign
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
+          zip -r exams_automation.ipa Payload
+
+      # 5. رفع ملف حزمة الـ iOS كـ Artifact
+      - name: Upload iOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ios-ipa
+          path: build/ios/iphoneos/exams_automation.ipa
