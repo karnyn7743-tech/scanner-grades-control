@@ -18,9 +18,8 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
   String? _excelPath;
   String? _qrFolderPath;
 
-  final List<String> _classes = [
-    "ثالث", "رابع", "خامس", "سادس", "سابع", "ثامن", "تاسع", "أول ثانوي", "ثاني ثانوي", "ثالث ثانوي"
-  ];
+  // أصبحت القائمة فارغة وديناميكية
+  List<String> _classes = [];
   String? _selectedClass;
 
   List<String> _subjects = [];
@@ -86,8 +85,10 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
       var sheet = excel.tables[sheetName]!;
 
       List<String> extractedSubjects = [];
+      Set<String> uniqueClasses = {}; // استخدام Set لمنع التكرار
 
       if (sheet.maxRows > 0) {
+        // 1. استخراج المواد من الصف الأول (بدءاً من العمود الخامس E)
         var firstRow = sheet.rows.first;
         int endColumn = sheet.maxColumns < 19 ? sheet.maxColumns : 19;
 
@@ -97,6 +98,18 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
             extractedSubjects.add(cellValue);
           }
         }
+
+        // 2. استخراج الصفوف الدراسية الفريدة من العمود C (الفهرس 2)
+        const int classColumnIndex = 2;
+        for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
+          var row = sheet.rows[rowIndex];
+          if (row.length > classColumnIndex && row[classColumnIndex] != null) {
+            var cellValue = row[classColumnIndex]?.value?.toString().trim();
+            if (cellValue != null && cellValue.isNotEmpty && cellValue != "null") {
+              uniqueClasses.add(cellValue);
+            }
+          }
+        }
       }
 
       setState(() {
@@ -104,11 +117,15 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
         _qrFolderPath = detectedQrPath;
         _subjects = extractedSubjects;
         _selectedSubject = null;
+        
+        // تحديث قائمة الصفوف
+        _classes = uniqueClasses.toList();
+        _selectedClass = null; // إعادة تعيين الاختيار ليختاره المستخدم من القائمة الجديدة
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("تم تحميل ملف الأكسيل بنجاح وجلب مسار الصور", textAlign: TextAlign.center),
+          content: Text("تم تحميل ملف الأكسيل وجلب الصفوف والمواد بنجاح", textAlign: TextAlign.center),
           backgroundColor: Colors.green,
         ),
       );
@@ -199,7 +216,11 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: "اختر الصف الدراسي", border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  labelText: "اختر الصف الدراسي",
+                  hintText: "يرجى رفع ملف الأكسيل أولاً لتظهر الصفوف",
+                  border: OutlineInputBorder(),
+                ),
                 value: _selectedClass,
                 items: _classes.map((String value) {
                   return DropdownMenuItem<String>(value: value, child: Text(value));
@@ -248,4 +269,3 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
     );
   }
 }
-
