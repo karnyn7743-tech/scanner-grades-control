@@ -78,16 +78,24 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 3. جلب المكتبات
-      - name: Install Dependencies
-        run: flutter pub get
-
-      # 4. بناء ملفات iOS وتجاوز متطلب الشهادة وحساب المطور
-      - name: Build iOS App
+      # 3. جلب المكتبات وتجهيز محرك iOS
+      - name: Install Dependencies & Precache iOS
         run: |
-          flutter build ios --config-only --release
+          flutter pub get
+          flutter precache --ios
+
+      # 4. تثبيت CocoaPods وتجهيز ملفات Xcode
+      - name: Install CocoaPods
+        run: |
           cd ios
-          xcodebuild build \
+          pod install --repo-update
+          cd ..
+
+      # 5. بناء التطبيق عبر xcodebuild مباشرة وتجاوز فحص الشهادات
+      - name: Build iOS via Xcode
+        run: |
+          cd ios
+          xcodebuild clean build \
             -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
@@ -95,14 +103,20 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM=""
+            DEVELOPMENT_TEAM="" \
+            -destination "generic/platform=iOS"
           cd ..
+
+      # 6. تجميع حزمة IPA
+      - name: Create IPA
+        run: |
           mkdir -p build/ios/iphoneos/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/ 2>/dev/null || cp -r ios/build/Release-iphoneos/Runner.app build/ios/iphoneos/Payload/
+          find ios/build -name "Runner.app" -exec cp -r {} build/ios/iphoneos/Payload/ \; 2>/dev/null || \
+          find ~/Library/Developer/Xcode/DerivedData -name "Runner.app" -exec cp -r {} build/ios/iphoneos/Payload/ \;
           cd build/ios/iphoneos
           zip -r exams_automation.ipa Payload
 
-      # 5. رفع ملف حزمة الـ iOS كـ Artifact
+      # 7. رفع ملف حزمة الـ iOS كـ Artifact
       - name: Upload iOS Artifact
         uses: actions/upload-artifact@v4
         with:
