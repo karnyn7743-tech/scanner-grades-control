@@ -82,12 +82,23 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 4. بناء ملفات iOS بنمط Release بدون توقيع (No Codesign)
+      # 4. بناء ملفات iOS وتجاوز متطلب الشهادة وحساب المطور
       - name: Build iOS App
         run: |
-          flutter build ios --release --no-codesign
+          flutter build ios --config-only --release
+          cd ios
+          xcodebuild build \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+          cd ..
           mkdir -p build/ios/iphoneos/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/ 2>/dev/null || cp -r ios/build/Release-iphoneos/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
           zip -r exams_automation.ipa Payload
 
