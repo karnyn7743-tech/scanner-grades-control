@@ -173,7 +173,7 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("توليد أوراق الاختبارات", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("توليد قوالب أوراق الاختبارات", style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
@@ -237,7 +237,7 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 18),
                       ),
                       child: const Text(
-                        "ابدأ توليد وحفظ أوراق الاختبار (PDF)",
+                        "ابدأ توليد وحفظ قوالب أوراق الاختبار (PDF)",
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
                     ),
