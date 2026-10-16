@@ -20,9 +20,13 @@
         script: flutter pub get
 
       - name: Build Android APK
-        script: flutter build apk --release
+        script: |
+          flutter build apk --release
+          mkdir -p output
+          find build -name "*.apk" -exec cp {} output/ \;
 
     artifacts:
+      - output/*.apk
       - build/**/outputs/**/*.apk
       - build/**/outputs/**/mapping.txt
 
