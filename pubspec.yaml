@@ -22,7 +22,7 @@ dependencies:
   # ===== Excel و QR =====
   excel: ^4.0.0
   mobile_scanner: ^5.1.0
- # qrscan_plus: ^1.0.8
+  qrscan_plus: ^1.0.8
 
   # ===== توليد ملفات PDF =====
   pdf: ^3.10.8
