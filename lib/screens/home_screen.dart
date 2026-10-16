@@ -19,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('الأتمتة المصغرة في كنترول الإختبارات'),
+        title: const Text('الأتمتة الذكبة لكنترول الإختبارات'),
         centerTitle: true,
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
@@ -46,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // 2. الزر الثاني (المضاف في الترتيب الثاني)
             _buildMainButton(
               context,
-              title: 'توليد أوراق الاختبارات',
+              title: 'توليد قوالب أوراق الاختبارات',
               icon: Icons.picture_as_pdf,
               onPressed: () {
                 Navigator.push(
