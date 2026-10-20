@@ -10,10 +10,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'screens/home_screen.dart';
 
 void main() async {
-  // تأكد من تهيئة Flutter قبل أي شيء
   WidgetsFlutterBinding.ensureInitialized();
 
-  // طلب الأذونات مع معالجة الأخطاء (لمنع انهيار التطبيق)
   try {
     await [
       Permission.camera,
@@ -21,8 +19,7 @@ void main() async {
       Permission.manageExternalStorage,
     ].request();
   } catch (e) {
-    // إذا فشل طلب الأذونات، نستمر في التشغيل (قد يطلبها المستخدم لاحقاً)
-    print('خطأ في طلب الأذونات: $e');
+    debugPrint('خطأ في طلب الأذونات: $e');
   }
 
   runApp(const MyApp());
@@ -45,30 +42,30 @@ class MyApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      // الاتجاه من اليمين لليسار لدعم اللغة العربية
       builder: (context, child) {
         return Directionality(
           textDirection: TextDirection.rtl,
           child: child!,
         );
       },
-      home: const ActivationCheckScreen(), // الشاشة البادئة لفحص التفعيل
+      home: const ActivationCheckScreen(),
     );
   }
 }
 
 // ==========================================
-// خدمة خوارزمية التفعيل الدائم المعتمدة على Device ID
+// خدمة خوارزمية التفعيل الدائم والتجريبي المعتمدة على Device ID
 // ==========================================
 class ActivationService {
-  static const String _secretSalt = "STUGRA_SCAN_SECRET_KEY_2026";
+  static const String _secretSaltPermanent = "STUGRA_SCAN_SECRET_KEY_2026";
+  static const String _secretSaltTrial = "STUGRA_TRIAL_KEY_2026";
 
   // الحصول على معرف الجهاز الفريد
   static Future<String> getDeviceId() async {
     DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     if (Platform.isAndroid) {
       AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      return androidInfo.id; // Android ID الفريد للجهاز
+      return androidInfo.id;
     } else if (Platform.isIOS) {
       IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
       return iosInfo.identifierForVendor ?? "UNKNOWN_DEVICE";
@@ -76,42 +73,114 @@ class ActivationService {
     return "UNKNOWN_DEVICE";
   }
 
-  // خوارزمية توليد كود التفعيل الصحيح بناءً على معرف الجهاز
-  static String generateActivationCode(String deviceId) {
-    var bytes = utf8.encode(deviceId + _secretSalt);
+  // توليد كود التفعيل الدائم: STUG-XXXX-YYYY
+  static String generatePermanentCode(String deviceId) {
+    var bytes = utf8.encode(deviceId + _secretSaltPermanent);
     var digest = sha256.convert(bytes).toString().toUpperCase();
-    
-    // تنسيق كود التفعيل ليصبح بالشكل: STUG-XXXX-YYYY
     String part1 = digest.substring(0, 4);
     String part2 = digest.substring(4, 8);
     return "STUG-$part1-$part2";
   }
 
-  // التحقق من صحة حالة التفعيل المسجلة
+  // توليد كود التجربة ليوم واحد: TRIAL-XXXX-YYYY
+  static String generateTrialCode(String deviceId) {
+    var bytes = utf8.encode(deviceId + _secretSaltTrial);
+    var digest = sha256.convert(bytes).toString().toUpperCase();
+    String part1 = digest.substring(0, 4);
+    String part2 = digest.substring(4, 8);
+    return "TRIAL-$part1-$part2";
+  }
+
+  // التحقق من صلاحية التشغيل الحالية (دائم أو تجريبي ساري المفعول)
   static Future<bool> isActivated() async {
     final prefs = await SharedPreferences.getInstance();
     bool activated = prefs.getBool('is_activated') ?? false;
     if (!activated) return false;
 
+    bool isTrial = prefs.getBool('is_trial') ?? false;
     String? savedCode = prefs.getString('activation_code');
     String deviceId = await getDeviceId();
-    String expectedCode = generateActivationCode(deviceId);
 
-    return savedCode == expectedCode;
+    // 1. فحص التفعيل الدائم
+    if (!isTrial) {
+      String expectedPermanent = generatePermanentCode(deviceId);
+      return savedCode == expectedPermanent;
+    }
+
+    // 2. فحص النسخة التجريبية (24 ساعة)
+    String expectedTrial = generateTrialCode(deviceId);
+    if (savedCode != expectedTrial) {
+      await _expireTrial(prefs);
+      return false;
+    }
+
+    int? startTime = prefs.getInt('trial_start_time');
+    int? lastCheckTime = prefs.getInt('trial_last_check_time');
+    int now = DateTime.now().millisecondsSinceEpoch;
+
+    if (startTime == null || lastCheckTime == null) {
+      await _expireTrial(prefs);
+      return false;
+    }
+
+    // حماية ضد التلاعب بتقديم أو تأخير ساعة الهاتف
+    if (now < lastCheckTime) {
+      await _expireTrial(prefs);
+      return false;
+    }
+
+    // انتهاء مدة الـ 24 ساعة (24 * 60 * 60 * 1000 مللي ثانية)
+    const int trialDuration = 24 * 60 * 60 * 1000;
+    if (now - startTime > trialDuration) {
+      await _expireTrial(prefs);
+      return false;
+    }
+
+    // تحديث آخر وقت استخدام بنجاح
+    await prefs.setInt('trial_last_check_time', now);
+    return true;
   }
 
-  // حفظ التفعيل دائمياً
-  static Future<bool> saveActivation(String code) async {
+  // حفظ ومعالجة الكود المدخل
+  static Future<String> saveActivation(String code) async {
+    final cleanCode = code.trim().toUpperCase();
     String deviceId = await getDeviceId();
-    String expectedCode = generateActivationCode(deviceId);
+    final prefs = await SharedPreferences.getInstance();
 
-    if (code.trim().toUpperCase() == expectedCode) {
-      final prefs = await SharedPreferences.getInstance();
+    // التحقق أولاً من المفتاح الدائم
+    String expectedPermanent = generatePermanentCode(deviceId);
+    if (cleanCode == expectedPermanent) {
       await prefs.setBool('is_activated', true);
-      await prefs.setString('activation_code', expectedCode);
-      return true;
+      await prefs.setBool('is_trial', false);
+      await prefs.setString('activation_code', cleanCode);
+      return "SUCCESS_PERMANENT";
     }
-    return false;
+
+    // التحقق من مفتاح التجربة
+    String expectedTrial = generateTrialCode(deviceId);
+    if (cleanCode == expectedTrial) {
+      // منع استخدام التجربة مرة أخرى لنفس الجهاز إذا انتهت سابقاً
+      bool trialUsedBefore = prefs.getBool('trial_used_before') ?? false;
+      if (trialUsedBefore) {
+        return "TRIAL_ALREADY_USED";
+      }
+
+      int now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setBool('is_activated', true);
+      await prefs.setBool('is_trial', true);
+      await prefs.setBool('trial_used_before', true);
+      await prefs.setString('activation_code', cleanCode);
+      await prefs.setInt('trial_start_time', now);
+      await prefs.setInt('trial_last_check_time', now);
+      return "SUCCESS_TRIAL";
+    }
+
+    return "INVALID_CODE";
+  }
+
+  static Future<void> _expireTrial(SharedPreferences prefs) async {
+    await prefs.setBool('is_activated', false);
+    await prefs.remove('activation_code');
   }
 }
 
@@ -140,7 +209,7 @@ class _ActivationCheckScreenState extends State<ActivationCheckScreen> {
   Future<void> _checkStatus() async {
     String devId = await ActivationService.getDeviceId();
     bool active = await ActivationService.isActivated();
-    
+
     setState(() {
       _deviceId = devId;
       _isActivated = active;
@@ -149,15 +218,28 @@ class _ActivationCheckScreenState extends State<ActivationCheckScreen> {
   }
 
   void _verifyAndActivate() async {
-    if (_codeController.text.trim().isEmpty) return;
+    String input = _codeController.text.trim();
+    if (input.isEmpty) return;
 
-    bool success = await ActivationService.saveActivation(_codeController.text);
-    if (success) {
+    String result = await ActivationService.saveActivation(input);
+
+    if (result == "SUCCESS_PERMANENT") {
       setState(() {
         _isActivated = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("🎉 تم تفعيل التطبيق بنجاح ومدى الحياة!")),
+      );
+    } else if (result == "SUCCESS_TRIAL") {
+      setState(() {
+        _isActivated = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⏳ تم تفعيل النسخة التجريبية بنجاح لمدة 24 ساعة.")),
+      );
+    } else if (result == "TRIAL_ALREADY_USED") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("❌ لقد تم استنفاد فترة التجربة لهذا الجهاز سابقاً. يرجى إدخال كود التفعيل الدائم.")),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -174,12 +256,10 @@ class _ActivationCheckScreenState extends State<ActivationCheckScreen> {
       );
     }
 
-    // إذا كان الجهاز مفعلاً، يتم فتح الصفحة الرئيسية التي تحتوي على الشاشات الثلاث مباشرة
     if (_isActivated) {
-      return HomeScreen(); 
+      return const HomeScreen();
     }
 
-    // واجهة شاشة قفل التفعيل
     return Scaffold(
       backgroundColor: const Color(0xFF1E1B18),
       body: Padding(
@@ -198,12 +278,12 @@ class _ActivationCheckScreenState extends State<ActivationCheckScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  "التطبيق محمي. يرجى نسخ معرف الجهاز التالي وإرساله لإصدار كود التفعيل الخاص بك:",
+                  "التطبيق محمي. يرجى نسخ معرف الجهاز التالي وإرساله لإصدار كود التفعيل أو كود التجربة:",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 20),
-                
+
                 // عرض معرف الجهاز
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -241,8 +321,8 @@ class _ActivationCheckScreenState extends State<ActivationCheckScreen> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 2),
                   decoration: InputDecoration(
-                    hintText: "STUG-XXXX-YYYY",
-                    hintStyle: const TextStyle(color: Colors.white30, letterSpacing: 1),
+                    hintText: "STUG-XXXX-YYYY أو TRIAL-XXXX-YYYY",
+                    hintStyle: const TextStyle(color: Colors.white30, letterSpacing: 1, fontSize: 14),
                     filled: true,
                     fillColor: Colors.black26,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -261,7 +341,7 @@ class _ActivationCheckScreenState extends State<ActivationCheckScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: _verifyAndActivate,
-                  child: const Text("تفعيل التطبيق الآن", style: TextStyle(fontSize: 18, color: Colors.white)),
+                  child: const Text("تأكيد التفعيل", style: TextStyle(fontSize: 18, color: Colors.white)),
                 ),
               ],
             ),
