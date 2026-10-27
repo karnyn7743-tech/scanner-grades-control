@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.exams_automation"
+    namespace = "com.fawaz.exams_automation"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.exams_automation"
+        applicationId = "com.fawaz.exams_automation"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
