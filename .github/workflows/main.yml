@@ -37,21 +37,32 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK عبر محرك Flutter القياسي مع راية تخطي الفحص الصارم
+      # 5. بناء تطبيق APK عبر محرك Flutter القياسي
       - name: Build APK via Flutter
-        run: |
-          flutter build apk --release --android-skip-build-dependency-validation || true
+        run: flutter build apk --release --android-skip-build-dependency-validation
 
-      # 6. العثور على ملف الـ APK ونقله لمسار الرفع الموحد
+      # 6. فحص شامل واستخراج ملف الـ APK
       - name: Locate and Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk
-          APK_FILE=$(find . -type f -name "*.apk" ! -path "*/intermediates/*" | head -n 1)
+          echo "=== فحص ملفات APK المنتجة في كامل المشروع ==="
+          find . -name "*.apk" || true
+
+          # البحث عن ملف الـ APK النهائي
+          APK_FILE=$(find build/ android/app/build/ -type f -name "*.apk" 2>/dev/null | grep -E "app-release|app-debug" | head -n 1)
+
           if [ -z "$APK_FILE" ]; then
-            echo "❌ لم يتم العثور على أي ملف APK تم إنتاجه!"
+            # إذا لم يُعثر عليه بالاسم القياسي، يتم أخذ أول ملف APK خارج مجلدات intermediates
+            APK_FILE=$(find . -type f -name "*.apk" ! -path "*/intermediates/*" 2>/dev/null | head -n 1)
+          fi
+
+          if [ -z "$APK_FILE" ]; then
+            echo "❌ لم يتم العثور على أي ملف APK، جاري فحص ملفات AAB..."
+            find . -name "*.aab" || true
             exit 1
           fi
-          echo "✅ تم العثور على ملف الـ APK في: $APK_FILE"
+
+          echo "✅ تم العثور على الـ APK في: $APK_FILE"
           cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
 
       # 7. رفع ملف الـ APK لتنزيله من Artifacts
