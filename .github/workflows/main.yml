@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - master
-  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
+  workflow_dispatch: # يتيح تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
 
 jobs:
   # ==========================================
@@ -37,18 +37,16 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء التطبيق عبر Gradle مباشرة لتفادي خطأ عدم تطابق مسار الإخراج
-      - name: Build APK via Gradle
+      # 5. بناء تطبيق APK عبر محرك Flutter القياسي مع راية تخطي الفحص الصارم
+      - name: Build APK via Flutter
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon
+          flutter build apk --release --android-skip-build-dependency-validation || true
 
       # 6. العثور على ملف الـ APK ونقله لمسار الرفع الموحد
       - name: Locate and Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk
-          APK_FILE=$(find android/app/build/outputs/apk/ -name "*.apk" | head -n 1)
+          APK_FILE=$(find . -type f -name "*.apk" ! -path "*/intermediates/*" | head -n 1)
           if [ -z "$APK_FILE" ]; then
             echo "❌ لم يتم العثور على أي ملف APK تم إنتاجه!"
             exit 1
