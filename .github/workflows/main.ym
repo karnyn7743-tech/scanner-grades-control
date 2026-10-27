@@ -1,0 +1,124 @@
+name: exams_automation
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
+
+jobs:
+  # ==========================================
+  # 1. مهمة بناء أندرويد (Android Job)
+  # ==========================================
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. جلب الكود من GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. إعداد بيئة Java
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. إعداد بيئة Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. جلب المكتبات
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. بناء تطبيق APK مباشرة عبر Gradle مع استخراج تقارير أخطاء الـ Manifest بدقة
+      - name: Build APK via Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace || {
+            echo "================== MANIFEST LOG DETAILS =================="
+            grep -rn "Error:" app/build/intermediates/ 2>/dev/null || true
+            find app/build/ -name "*.txt" -exec grep -H "Manifest" {} + 2>/dev/null || true
+            find app/build/ -name "*merger*report*" -exec head -n 100 {} + 2>/dev/null || true
+            exit 1
+          }
+          cd ..
+          mkdir -p build/app/outputs/flutter-apk
+          cp android/app/build/outputs/apk/release/app-release.apk build/app/outputs/flutter-apk/app-release.apk
+
+      # 6. رفع ملف الـ APK لتنزيله من Artifacts
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+
+  # ==========================================
+  # 2. مهمة بناء آيفون (iOS Job)
+  # ==========================================
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      # 1. جلب الكود من GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. إعداد بيئة Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 3. جلب المكتبات وتجهيز محرك iOS
+      - name: Install Dependencies & Precache iOS
+        run: |
+          flutter pub get
+          flutter precache --ios
+
+      # 4. تثبيت CocoaPods وتجهيز ملفات Xcode
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+          cd ..
+
+      # 5. بناء التطبيق عبر xcodebuild مباشرة وتجاوز فحص الشهادات
+      - name: Build iOS via Xcode
+        run: |
+          cd ios
+          xcodebuild clean build \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            -destination "generic/platform=iOS"
+          cd ..
+
+      # 6. تجميع حزمة IPA
+      - name: Create IPA
+        run: |
+          mkdir -p build/ios/iphoneos/Payload
+          find ios/build -name "Runner.app" -exec cp -r {} build/ios/iphoneos/Payload/ \; 2>/dev/null || \
+          find ~/Library/Developer/Xcode/DerivedData -name "Runner.app" -exec cp -r {} build/ios/iphoneos/Payload/ \;
+          cd build/ios/iphoneos
+          zip -r exams_automation.ipa Payload
+
+      # 7. رفع ملف حزمة الـ iOS كـ Artifact
+      - name: Upload iOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ios-ipa
+          path: build/ios/iphoneos/exams_automation.ipa
