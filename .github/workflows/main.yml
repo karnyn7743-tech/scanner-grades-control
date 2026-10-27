@@ -19,7 +19,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. إعداد بيئة Java 21 (المتوافقة مع Gradle 8.14 و AGP 8.7)
+      # 2. إعداد بيئة Java 21 (المتوافقة مع Gradle 8.14 و AGP 8.9)
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -37,11 +37,26 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK مع راية تجاوز فحص التبعيات الصارم
-      - name: Build APK via Flutter
-        run: flutter build apk --release --android-skip-build-dependency-validation
+      # 5. بناء التطبيق عبر Gradle مباشرة لتفادي خطأ عدم تطابق مسار الإخراج
+      - name: Build APK via Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon
 
-      # 6. رفع ملف الـ APK لتنزيله من Artifacts
+      # 6. العثور على ملف الـ APK ونقله لمسار الرفع الموحد
+      - name: Locate and Prepare APK
+        run: |
+          mkdir -p build/app/outputs/flutter-apk
+          APK_FILE=$(find android/app/build/outputs/apk/ -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "❌ لم يتم العثور على أي ملف APK تم إنتاجه!"
+            exit 1
+          fi
+          echo "✅ تم العثور على ملف الـ APK في: $APK_FILE"
+          cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
+
+      # 7. رفع ملف الـ APK لتنزيله من Artifacts
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
