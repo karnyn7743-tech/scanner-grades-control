@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as px;
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,7 +16,7 @@ class ScanQRScreen extends StatefulWidget {
 class _ScanQRScreenState extends State<ScanQRScreen> {
   String? _excelPath;
   px.Excel? _excelInstance;
-  Map<String, String> _studentMap = {}; // secretCode -> studentName
+  final Map<String, String> _studentMap = {}; // secretCode -> studentName
 
   String _secretCode = '';
   String _studentName = '';
@@ -39,7 +38,7 @@ class _ScanQRScreenState extends State<ScanQRScreen> {
         await _loadExcel();
       }
     } catch (e) {
-      print('خطأ في تحميل آخر ملف: $e');
+      debugPrint('خطأ في تحميل آخر ملف: $e');
     }
   }
 
@@ -78,36 +77,51 @@ class _ScanQRScreenState extends State<ScanQRScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('last_excel_file', _excelPath!);
         await _loadExcel();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم تحميل ملف الأكسيل بنجاح')),
+          const SnackBar(content: Text('✅ تم تحميل ملف الكشوفات (statment) بنجاح')),
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطأ: $e')),
       );
     }
   }
 
-  // ===================== قراءة ملف Excel =====================
+  // ===================== قراءة ملف Excel من ورقة statment =====================
   Future<void> _loadExcel() async {
     if (_excelPath == null) return;
-    final bytes = await File(_excelPath!).readAsBytes();
-    _excelInstance = px.Excel.decodeBytes(bytes);
-    final sheet = _excelInstance!.tables.values.first;
+    try {
+      final bytes = await File(_excelPath!).readAsBytes();
+      _excelInstance = px.Excel.decodeBytes(bytes);
+      
+      // استهداف ورقة statment حصراً
+      final sheet = _excelInstance!.tables['statment'] ?? _excelInstance!.tables.values.first;
 
-    _studentMap.clear();
+      _studentMap.clear();
 
-    for (int row = 1; row < sheet.maxRows; row++) {
-      final cellB = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row)).value;
-      final cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row)).value;
+      // البدء من الصف السادس (rowIndex = 5)
+      for (int row = 5; row < sheet.maxRows; row++) {
+        // العمود B: اسم الطالب (columnIndex: 1)
+        final cellB = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row)).value;
+        // العمود D: الرقم السري (columnIndex: 3)
+        final cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row)).value;
 
-      if (cellB != null && cellD != null) {
-        _studentMap[cellD.toString().trim()] = cellB.toString().trim();
+        if (cellB != null && cellD != null) {
+          final secret = cellD.toString().trim();
+          final name = cellB.toString().trim();
+          if (secret.isNotEmpty && name.isNotEmpty) {
+            _studentMap[secret] = name;
+          }
+        }
       }
-    }
 
-    setState(() {});
+      setState(() {});
+    } catch (e) {
+      debugPrint('خطأ في قراءة ملف الإكسيل: $e');
+    }
   }
 
   // ===================== تشغيل/إيقاف الكاميرا =====================
@@ -141,12 +155,14 @@ class _ScanQRScreenState extends State<ScanQRScreen> {
     final String? code = capture.barcodes.first.rawValue;
     if (code == null || code.isEmpty) return;
 
+    final String cleanCode = code.trim();
+
     // إيقاف الكاميرا بعد المسح
     _cameraController.stop();
     setState(() {
       _isScanning = false;
-      _secretCode = code;
-      _studentName = _studentMap[code] ?? '⚠️ غير موجود';
+      _secretCode = cleanCode;
+      _studentName = _studentMap[cleanCode] ?? '⚠️ غير موجود';
     });
   }
 
