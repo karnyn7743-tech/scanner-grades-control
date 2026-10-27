@@ -1,0 +1,62 @@
+name: exams_automation
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
+
+jobs:
+    # ==========================================
+  # 1. مهمة بناء أندرويد (Android Job)
+  # ==========================================
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. جلب الكود من GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. إعداد بيئة Java 21 الإلزامية لـ AGP 8.11+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      # 3. إعداد بيئة Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. جلب المكتبات
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. بناء تطبيق APK عبر محرك Flutter القياسي
+      - name: Build APK via Flutter
+        run: flutter build apk --release --android-skip-build-dependency-validation
+
+      # 6. استخراج ملف الـ APK ونسخه
+      - name: Locate and Prepare APK
+        run: |
+          mkdir -p build/app/outputs/flutter-apk
+          APK_FILE=$(find . -name "*.apk" ! -path "*/intermediates/*" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "❌ لم يتم العثور على أي ملف APK!"
+            exit 1
+          fi
+          echo "✅ تم العثور على الـ APK في: $APK_FILE"
+          cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
+
+      # 7. رفع ملف الـ APK لتنزيله
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
