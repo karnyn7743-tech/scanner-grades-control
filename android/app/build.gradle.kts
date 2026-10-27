@@ -1,8 +1,6 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -44,6 +42,14 @@ android {
 
     buildFeatures {
         viewBinding = true
+    }
+
+    // تثبيت اسم ملف الـ APK في مسار الإخراج
+    applicationVariants.all {
+        outputs.all {
+            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            output?.outputFileName = "app-release.apk"
+        }
     }
 }
 
