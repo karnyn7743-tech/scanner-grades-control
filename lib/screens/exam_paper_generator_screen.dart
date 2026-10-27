@@ -18,7 +18,6 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
   String? _excelPath;
   String? _qrFolderPath;
 
-  // أصبحت القائمة فارغة وديناميكية
   List<String> _classes = [];
   String? _selectedClass;
 
@@ -81,33 +80,34 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
 
       var bytes = await destinationFile.readAsBytes();
       var excel = Excel.decodeBytes(bytes);
-      String sheetName = excel.tables.keys.first;
-      var sheet = excel.tables[sheetName]!;
+      
+      // استهداف ورقة statment حصراً
+      var sheet = excel.tables['statment'] ?? excel.tables.values.first;
 
       List<String> extractedSubjects = [];
-      Set<String> uniqueClasses = {}; // استخدام Set لمنع التكرار
+      Set<String> uniqueClasses = {};
 
-      if (sheet.maxRows > 0) {
-        // 1. استخراج المواد من الصف الأول (بدءاً من العمود الخامس E)
-        var firstRow = sheet.rows.first;
-        int endColumn = sheet.maxColumns < 19 ? sheet.maxColumns : 19;
+      // 1. استخراج المواد من الصف 3 (index = 2) بدءاً من العمود E (index = 4) بقفز 5 أعمدة
+      const int subjectRowIndex = 2; // الصف الثالث في الإكسيل
+      if (sheet.maxRows > subjectRowIndex) {
+        var subjectRow = sheet.rows[subjectRowIndex];
 
-        for (int i = 4; i < endColumn; i++) {
-          var cellValue = firstRow[i]?.value?.toString().trim();
-          if (cellValue != null && cellValue.isNotEmpty) {
-            extractedSubjects.add(cellValue);
+        for (int i = 4; i < sheet.maxColumns && i < subjectRow.length; i += 5) {
+          var cellValue = subjectRow[i]?.value?.toString().trim();
+          if (cellValue != null && cellValue.isNotEmpty && !cellValue.contains("المجموع")) {
+            extractedSubjects.add(cellValue.replaceAll(RegExp(r'\s+'), ' '));
           }
         }
+      }
 
-        // 2. استخراج الصفوف الدراسية الفريدة من العمود C (الفهرس 2)
-        const int classColumnIndex = 2;
-        for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
-          var row = sheet.rows[rowIndex];
-          if (row.length > classColumnIndex && row[classColumnIndex] != null) {
-            var cellValue = row[classColumnIndex]?.value?.toString().trim();
-            if (cellValue != null && cellValue.isNotEmpty && cellValue != "null") {
-              uniqueClasses.add(cellValue);
-            }
+      // 2. استخراج الصفوف الدراسية الفريدة من العمود C (index = 2) بدءاً من الصف السادس (rowIndex = 5)
+      const int classColumnIndex = 2;
+      for (int rowIndex = 5; rowIndex < sheet.maxRows; rowIndex++) {
+        var row = sheet.rows[rowIndex];
+        if (row.length > classColumnIndex && row[classColumnIndex] != null) {
+          var cellValue = row[classColumnIndex]?.value?.toString().trim();
+          if (cellValue != null && cellValue.isNotEmpty && cellValue != "null") {
+            uniqueClasses.add(cellValue);
           }
         }
       }
@@ -118,14 +118,13 @@ class _ExamPaperGeneratorScreenState extends State<ExamPaperGeneratorScreen> {
         _subjects = extractedSubjects;
         _selectedSubject = null;
         
-        // تحديث قائمة الصفوف
         _classes = uniqueClasses.toList();
-        _selectedClass = null; // إعادة تعيين الاختيار ليختاره المستخدم من القائمة الجديدة
+        _selectedClass = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("تم تحميل ملف الأكسيل وجلب الصفوف والمواد بنجاح", textAlign: TextAlign.center),
+          content: Text("تم تحميل ورقة (statment) وجلب الصفوف والمواد بنجاح", textAlign: TextAlign.center),
           backgroundColor: Colors.green,
         ),
       );
