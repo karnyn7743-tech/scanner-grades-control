@@ -33,32 +33,20 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 4. جلب المكتبات
+      # 4. جلب المكتبات وتحديث الكاش
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK مباشرة عبر Gradle مع استخراج تقارير أخطاء الـ Manifest بدقة
-      - name: Build APK via Gradle
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace || {
-            echo "================== MANIFEST LOG DETAILS =================="
-            grep -rn "Error:" app/build/intermediates/ 2>/dev/null || true
-            find app/build/ -name "*.txt" -exec grep -H "Manifest" {} + 2>/dev/null || true
-            find app/build/ -name "*merger*report*" -exec head -n 100 {} + 2>/dev/null || true
-            exit 1
-          }
-          cd ..
-          mkdir -p build/app/outputs/flutter-apk
-          cp android/app/build/outputs/apk/release/app-release.apk build/app/outputs/flutter-apk/app-release.apk
+      # 5. بناء تطبيق APK عبر أمر Flutter القياسي (لتفادي تعارضات Gradle المباشرة)
+      - name: Build APK via Flutter
+        run: flutter build apk --release
 
       # 6. رفع ملف الـ APK لتنزيله من Artifacts
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
 
   # ==========================================
   # 2. مهمة بناء آيفون (iOS Job)
