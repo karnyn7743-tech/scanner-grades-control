@@ -5,10 +5,10 @@ on:
     branches:
       - main
       - master
-  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
+  workflow_dispatch: # يتيح تشغيل البناء يدوياً بضغطة زر من صفحة Actions دون الحاجة لعمل push
 
 jobs:
-    # ==========================================
+  # ==========================================
   # 1. مهمة بناء أندرويد (Android Job)
   # ==========================================
   build-android:
@@ -59,4 +59,3 @@ jobs:
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-
