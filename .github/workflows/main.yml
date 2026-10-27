@@ -33,28 +33,28 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 4. جلب المكتبات وتحديث الكاش
-      - name: Install Dependencies
-        run: flutter pub get
+      # 4. جلب المكتبات وتجهيز حزم Dart وأصول التطبيق
+      - name: Install Dependencies & Build Bundle
+        run: |
+          flutter pub get
+          flutter build bundle
 
-      # 5. بناء تطبيق APK عبر محرك Flutter القياسي
-      - name: Build APK via Flutter
-        run: flutter build apk --release --android-skip-build-dependency-validation
+      # 5. تجميع تطبيق APK عبر Gradle مباشرة لتفادي خطأ فحص المسار في Flutter
+      - name: Build APK via Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --stacktrace
 
-      # 6. فحص شامل واستخراج ملف الـ APK
+      # 6. فحص شامل واستخراج ملف الـ APK الناتج
       - name: Locate and Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk
           echo "=== فحص ملفات APK المنتجة في كامل المشروع ==="
           find . -name "*.apk" || true
 
-          # البحث عن ملف الـ APK النهائي
-          APK_FILE=$(find build/ android/app/build/ -type f -name "*.apk" 2>/dev/null | grep -E "app-release|app-debug" | head -n 1)
-
-          if [ -z "$APK_FILE" ]; then
-            # إذا لم يُعثر عليه بالاسم القياسي، يتم أخذ أول ملف APK خارج مجلدات intermediates
-            APK_FILE=$(find . -type f -name "*.apk" ! -path "*/intermediates/*" 2>/dev/null | head -n 1)
-          fi
+          # البحث عن ملف الـ APK النهائي خارج مجلدات intermediates
+          APK_FILE=$(find android/app/build/outputs/apk/ build/ -type f -name "*.apk" ! -path "*/intermediates/*" 2>/dev/null | head -n 1)
 
           if [ -z "$APK_FILE" ]; then
             echo "❌ لم يتم العثور على أي ملف APK، جاري فحص ملفات AAB..."
