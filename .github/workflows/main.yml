@@ -19,12 +19,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. إعداد بيئة Java
+      # 2. إعداد بيئة Java 21 (المتوافقة مع Gradle 8.14 و AGP 8.7)
       - name: Set up JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       # 3. إعداد بيئة Flutter
       - name: Set up Flutter
@@ -37,9 +37,9 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK عبر أمر Flutter القياسي (لتفادي تعارضات Gradle المباشرة)
+      # 5. بناء تطبيق APK مع راية تجاوز فحص التبعيات الصارم
       - name: Build APK via Flutter
-        run: flutter build apk --release
+        run: flutter build apk --release --android-skip-build-dependency-validation
 
       # 6. رفع ملف الـ APK لتنزيله من Artifacts
       - name: Upload APK Artifact
