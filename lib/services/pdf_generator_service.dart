@@ -130,7 +130,7 @@ class PdfGeneratorService {
 
                         pw.SizedBox(width: 15),
 
-                        // 3. كود المادة (مطبوع مباشرة على بياض الورقة بدون أي إطار)
+                        // 3. كود المادة (مطبوع مباشرة على بياض الورقة بحجم خط 28 واضح)
                         pw.SizedBox(
                           width: 45,
                           height: 45,
@@ -157,7 +157,8 @@ class PdfGeneratorService {
     }
 
     final String cleanSubject = subjectNameString.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-    final String finalFilePath = "$folderPath/امتحانات_${selectedClass}_$cleanSubject.pdf";
+    // التسمية الدقيقة المتفق عليها: اختبار_[الصف]_[المادة].pdf
+    final String finalFilePath = "$folderPath/اختبار_${selectedClass}_$cleanSubject.pdf";
     
     final file = File(finalFilePath);
     await file.writeAsBytes(await pdf.save(), flush: true);
@@ -174,30 +175,39 @@ class PdfGeneratorService {
 
       var bytes = File(excelPath).readAsBytesSync();
       var excel = Excel.decodeBytes(bytes);
-      String sheetName = excel.tables.keys.first;
-      var sheet = excel.tables[sheetName]!;
+      
+      // استهداف ورقة statment حصراً
+      var sheet = excel.tables['statment'] ?? excel.tables.values.first;
 
       List<Map<String, dynamic>> studentsList = [];
       String subjectNameString = "مادة_$selectedSubject";
 
-      int targetSubjectColumn = 4 + (int.parse(selectedSubject) - 1);
+      // 1. استخراج اسم المادة من الصف 3 (rowIndex = 2) والعمود E (index = 4) مع مضاعفات 5 أعمدة
+      const int subjectRowIndex = 2; // الصف الثالث في الإكسيل
+      int targetSubjectOrder = int.parse(selectedSubject);
+      int targetSubjectColumn = 4 + ((targetSubjectOrder - 1) * 5);
 
-      if (sheet.maxRows > 0 && targetSubjectColumn < sheet.maxColumns) {
-        var headerValue = sheet.rows.first[targetSubjectColumn]?.value;
+      if (sheet.maxRows > subjectRowIndex && targetSubjectColumn < sheet.maxColumns) {
+        var headerValue = sheet.rows[subjectRowIndex][targetSubjectColumn]?.value;
         if (headerValue != null && headerValue.toString().trim().isNotEmpty) {
           subjectNameString = headerValue.toString().trim();
         }
       }
 
+      // 2. قراءة بيانات الطلاب بدءاً من الصف السادس (rowIndex = 5)
       int rowsCount = sheet.rows.length;
-      for (int i = 1; i < rowsCount; i++) {
+      for (int i = 5; i < rowsCount; i++) {
         var row = sheet.rows[i];
         
         if (row == null || row.isEmpty) continue;
 
+        // العمود A (index = 0): رقم القيد / الجلوس
         String seatNumber = (row.length > 0 && row[0]?.value != null) ? row[0]!.value.toString().trim() : ""; 
+        // العمود B (index = 1): اسم الطالب
         String studentName = (row.length > 1 && row[1]?.value != null) ? row[1]!.value.toString().trim() : ""; 
+        // العمود C (index = 2): الصف الدراسي
         String className = (row.length > 2 && row[2]?.value != null) ? row[2]!.value.toString().trim() : ""; 
+        // العمود D (index = 3): الرقم السري للطالب
         String secretNumber = (row.length > 3 && row[3]?.value != null) ? row[3]!.value.toString().trim() : "";
 
         if (seatNumber.isEmpty && studentName.isEmpty && className.isEmpty) {
@@ -207,6 +217,7 @@ class PdfGeneratorService {
         if (className != selectedClass || seatNumber.isEmpty) continue;
 
         Uint8List? qrImageBytes;
+        // البحث عن الـ QR المسمى برقم القيد (العمود A)
         File qrFile = File("$qrFolderPath/$seatNumber.png");
         if (!qrFile.existsSync()) {
           qrFile = File("$qrFolderPath/$seatNumber.jpg");
