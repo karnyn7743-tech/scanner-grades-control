@@ -60,7 +60,6 @@ flutter:
 
   # ===== مجلدات الأصول (مفعّلة) =====
   assets:
-    - assets/images/
     - assets/models/
     - assets/fonts/Amiri_Regular.ttf
 
