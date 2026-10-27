@@ -39,7 +39,6 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
   Future<Directory> _getPublicDirectory() async {
     Directory? baseDir;
 
-    // المحاولة 1: استخدام المجلد المستنداتي الخاص بالتطبيق للضمان الشامل بدون قيود النظام
     if (Platform.isAndroid) {
       final Directory downloadDir = Directory('/storage/emulated/0/Download');
       if (await downloadDir.exists()) {
@@ -117,20 +116,26 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
     }
   }
 
-  // ===================== قراءة ملف Excel =====================
+  // ===================== قراءة ملف Excel من ورقة statment =====================
   Future<void> _parseExcel() async {
     if (_excelPath == null) return;
 
     try {
       final bytes = await File(_excelPath!).readAsBytes();
       final excel = px.Excel.decodeBytes(bytes);
-      final sheet = excel.tables.values.first;
+
+      // استهداف ورقة statment حصراً
+      final sheet = excel.tables['statment'] ?? excel.tables.values.first;
 
       _students.clear();
 
-      for (int row = 1; row < sheet.maxRows; row++) {
+      // البدء من الصف السادس (rowIndex = 5) وفق تنسيق statment الجديد
+      for (int row = 5; row < sheet.maxRows; row++) {
+        // العمود A: رقم القيد (columnIndex: 0)
         final cellA = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row)).value;
+        // العمود B: اسم الطالب (columnIndex: 1)
         final cellB = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row)).value;
+        // العمود D: الرقم السري (columnIndex: 3)
         final cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row)).value;
 
         if (cellA != null && cellA.toString().trim().isNotEmpty &&
@@ -144,7 +149,7 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
       }
 
       setState(() {
-        _statusMessage = 'تم تحميل ${_students.length} طالب';
+        _statusMessage = 'تم تحميل ${_students.length} طالب من كشف (statment)';
       });
 
       _showDuplicatesDialog();
@@ -233,8 +238,8 @@ class _GenerateQRScreenState extends State<GenerateQRScreen> {
 
       int count = 0;
       for (var student in _students) {
-        final String id = student['id']!;
-        final String secret = student['secret']!;
+        final String id = student['id']!; // رقم القيد من العمود A لتسمية الصورة
+        final String secret = student['secret']!; // الرقم السري من العمود D لمحتوى الـ QR
 
         final Uint8List qrBytes = await scanner.generateBarCode(secret);
 
