@@ -37,19 +37,26 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
-      # 5. بناء تطبيق APK عبر محرك Flutter القياسي
+      # 5. بناء تطبيق APK عبر محرك Flutter القياسي وتجاوز خطأ فحص المسار
       - name: Build APK via Flutter
-        run: flutter build apk --release --android-skip-build-dependency-validation
+        run: |
+          flutter build apk --release --android-skip-build-dependency-validation || true
 
       # 6. استخراج ملف الـ APK ونسخه
       - name: Locate and Prepare APK
         run: |
           mkdir -p build/app/outputs/flutter-apk
+          echo "=== فحص كافة ملفات APK المتولدة ==="
+          find . -name "*.apk" || true
+          
+          # استخراج مسار ملف الـ APK النهائي خارج مجلدات intermediates
           APK_FILE=$(find . -name "*.apk" ! -path "*/intermediates/*" | head -n 1)
+          
           if [ -z "$APK_FILE" ]; then
             echo "❌ لم يتم العثور على أي ملف APK!"
             exit 1
           fi
+          
           echo "✅ تم العثور على الـ APK في: $APK_FILE"
           cp "$APK_FILE" build/app/outputs/flutter-apk/app-release.apk
 
