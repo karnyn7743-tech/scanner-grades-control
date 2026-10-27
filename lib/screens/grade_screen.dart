@@ -27,8 +27,15 @@ class GradeEntryScreen extends StatefulWidget {
 class _GradeEntryScreenState extends State<GradeEntryScreen> {
   String _fileName = "لم يتم اختيار ملف الكنترول بعد";
   String? _selectedFilePath;
+  
+  // خريطة لتخزين اسم المادة والعمود الأساسي لها
+  final Map<String, int> _subjectBaseColumns = {};
   List<String> _subjects = [];
   String? _selectedSubject;
+  
+  // اختيار الفصل الدراسي: 1 = الفصل الأول، 2 = الفصل الثاني
+  int _selectedSemester = 1;
+
   bool _isLoading = false;
 
   String _secretIdResult = "سيظهر هنا الرقم السري";
@@ -116,40 +123,91 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     super.dispose();
   }
 
+  /// قراءة ورقة statment واستخراج أسماء المواد ومواقع الأعمدة بدءاً من الصف 3
   Future<void> _parseExcelFile(String filePath) async {
     try {
       final bytes = await File(filePath).readAsBytes();
       _excelInstance = px.Excel.decodeBytes(bytes);
 
       if (_excelInstance!.tables.isNotEmpty) {
-        var sheet = _excelInstance!.tables.values.first;
-        List<String> tempSubjects = [];
+        // استهداف ورقة statment حصراً
+        var sheet = _excelInstance!.tables['statment'] ?? _excelInstance!.tables.values.first;
 
-        if (sheet.maxRows > 0) {
-          var row = sheet.rows.first;
-          for (int i = 4; i <= 18; i++) {
-            if (i < row.length && row[i] != null) {
-              tempSubjects.add(row[i]!.value.toString().trim());
+        Map<String, int> tempSubjectsMap = {};
+        List<String> tempSubjectsList = [];
+
+        // الصف الثالث في الإكسيل (rowIndex = 2) يحتوي على أسماء المواد بدءاً من العمود E (columnIndex = 4)
+        const int subjectRowIndex = 2;
+        if (sheet.maxRows > subjectRowIndex) {
+          var row = sheet.rows[subjectRowIndex];
+          for (int c = 4; c < sheet.maxColumns && c < row.length; c += 5) {
+            var val = row[c]?.value?.toString().trim();
+            if (val != null && val.isNotEmpty && !val.contains("المجموع")) {
+              val = val.replaceAll(RegExp(r'\s+'), ' ');
+              if (!tempSubjectsMap.containsKey(val)) {
+                tempSubjectsMap[val] = c;
+                tempSubjectsList.add(val);
+              }
             }
           }
         }
 
+        // حساب عدد الطلاب الفعلي من الصف 6 (rowIndex = 5) حيث يوجد الرقم السري في العمود D (index = 3)
+        int studentsCount = 0;
+        for (int r = 5; r < sheet.maxRows; r++) {
+          var secVal = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: r)).value;
+          if (secVal != null && secVal.toString().trim().isNotEmpty) {
+            studentsCount++;
+          }
+        }
+
         setState(() {
-          _subjects = tempSubjects;
-          _totalStudents = sheet.maxRows > 1 ? sheet.maxRows - 1 : 0;
-          _gradedStudents = 0;
+          _subjectBaseColumns.clear();
+          _subjectBaseColumns.addAll(tempSubjectsMap);
+          _subjects = tempSubjectsList;
+          _totalStudents = studentsCount;
           _fileName = filePath.split('/').last;
           _selectedFilePath = filePath;
+          if (_subjects.isNotEmpty && _selectedSubject == null) {
+            _selectedSubject = _subjects.first;
+          }
         });
+
+        _updateGradedCount();
       }
     } catch (e) {
-      _showSnackBar("خطأ في قراءة الملف: $e");
+      _showSnackBar("خطأ في قراءة ملف الكشوفات: $e");
       setState(() {
         _fileName = "فشل في قراءة ملف الأكسيل";
         _subjects = [];
         _totalStudents = 0;
+        _gradedStudents = 0;
       });
     }
+  }
+
+  /// تحديث عدد الطلاب المرصود لهم وفق المادة والفصل المحددين
+  void _updateGradedCount() {
+    if (_excelInstance == null || _selectedSubject == null) return;
+    var sheet = _excelInstance!.tables['statment'] ?? _excelInstance!.tables.values.first;
+
+    int? baseCol = _subjectBaseColumns[_selectedSubject!];
+    if (baseCol == null) return;
+
+    // الفصل الأول: اختبار 1 (baseCol + 1) | الفصل الثاني: اختبار 2 (baseCol + 3)
+    int targetCol = baseCol + (_selectedSemester == 1 ? 1 : 3);
+
+    int count = 0;
+    for (int r = 5; r < sheet.maxRows; r++) {
+      var val = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: targetCol, rowIndex: r)).value;
+      if (val != null && val.toString().trim().isNotEmpty) {
+        count++;
+      }
+    }
+
+    setState(() {
+      _gradedStudents = count;
+    });
   }
 
   Future<void> _pickAndParseExcel() async {
@@ -177,7 +235,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('last_excel_file', publicFile.path);
 
-      _showSnackBar('✅ تم ربط الملف المباشر: ${publicFile.path}');
+      _showSnackBar('✅ تم تحميل ورقة (statment) بنجاح');
     } catch (e) {
       _showSnackBar("حدث خطأ أثناء المعالجة: $e");
     } finally {
@@ -353,27 +411,43 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     }
   }
 
+  /// حفظ الدرجة مباشرة في كشف statment في عمود الاختبار المناسب للفصل المحدد
   Future<void> _saveGradeToExcel() async {
-    if (_excelInstance == null || _selectedFilePath == null) {
-      _showSnackBar("⚠️ خطأ: لم يتم تحميل ملف إكسيل بعد!");
+    if (_excelInstance == null || _selectedFilePath == null || _selectedSubject == null) {
+      _showSnackBar("⚠️ خطأ: لم يتم تحميل ملف إكسيل أو تحديد المادة بعد!");
       return;
     }
 
     setState(() { _isLoading = true; });
 
     try {
-      var sheet = _excelInstance!.tables.values.first;
-      bool targetFound = false;
-      int subjectColumnIndex = 4 + _subjects.indexOf(_selectedSubject!);
+      // استهداف ورقة statment حصراً
+      var sheet = _excelInstance!.tables['statment'] ?? _excelInstance!.tables.values.first;
+      
+      int? baseCol = _subjectBaseColumns[_selectedSubject!];
+      if (baseCol == null) {
+        _showSnackBar("❌ تعذر تحديد عمود المادة!");
+        setState(() { _isLoading = false; });
+        return;
+      }
 
-      for (int rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
+      // تحديد عمود الرصد بناءً على الفصل الدراسي
+      // الفصل الأول: اختبار 1 (baseCol + 1)
+      // الفصل الثاني: اختبار 2 (baseCol + 3)
+      int targetCol = baseCol + (_selectedSemester == 1 ? 1 : 3);
+
+      bool targetFound = false;
+
+      // البحث عن الرقم السري في العمود D (columnIndex = 3) بدءاً من الصف 6 (rowIndex = 5)
+      for (int rowIndex = 5; rowIndex < sheet.maxRows; rowIndex++) {
         var cellD = sheet.cell(px.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex)).value;
 
-        if (cellD.toString().trim() == _secretIdResult.trim()) {
+        if (cellD != null && cellD.toString().trim() == _secretIdResult.trim()) {
           targetFound = true;
 
+          // التحقق من الرصد المسبق في نفس الاختبار
           var existingValue = sheet.cell(px.CellIndex.indexByColumnRow(
-            columnIndex: subjectColumnIndex,
+            columnIndex: targetCol,
             rowIndex: rowIndex
           )).value;
 
@@ -381,7 +455,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
             setState(() { _isLoading = false; });
             _showDialogAlert(
               title: "⚠️ تنبيه: رصد مسبق!",
-              message: "هذا الطالب (الرقم السري: $_secretIdResult) تم رصد درجته مسبقاً في هذه المادة وهي (${existingValue.toString()}).",
+              message: "هذا الطالب (الرقم السري: $_secretIdResult) تم رصد درجته مسبقاً في ${_selectedSemester == 1 ? 'اختبار الفصل الأول' : 'اختبار الفصل الثاني'} لمادة ($_selectedSubject) وهي (${existingValue.toString()}).",
               shouldCloseCamera: false,
             );
             return;
@@ -402,7 +476,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
           }
 
           sheet.cell(px.CellIndex.indexByColumnRow(
-            columnIndex: subjectColumnIndex,
+            columnIndex: targetCol,
             rowIndex: rowIndex
           )).value = cellValueToSave;
           break;
@@ -410,7 +484,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
       }
 
       if (!targetFound) {
-        _showSnackBar("❌ لم يتم العثور على الرقم السري ($_secretIdResult) في الملف!");
+        _showSnackBar("❌ لم يتم العثور على الرقم السري ($_secretIdResult) في العمود D بكشف statment!");
         setState(() { _isLoading = false; });
         return;
       }
@@ -431,12 +505,12 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
 
       if (await targetFile.exists() && await targetFile.length() > 0) {
         setState(() {
-          _gradedStudents += 1;
           _secretIdResult = "سيظهر هنا الرقم السري";
           _gradeController.clear();
           _isScanningActive = false;
         });
-        _showSnackBar("✅ تم حفظ الدرجة بنجاح في: $currentPath");
+        _updateGradedCount();
+        _showSnackBar("✅ تم رصد الدرجة بنجاح في كشف statment");
       } else {
         _showSnackBar("❌ فشل حفظ الملف!");
       }
@@ -538,7 +612,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
               onPressed: _isLoading ? null : _pickAndParseExcel,
               child: _isLoading
                   ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text("اختر ملف الأكسيل", style: TextStyle(fontSize: 18, color: Colors.white)),
+                  : const Text("اختر ملف الأكسيل (الكشوفات)", style: TextStyle(fontSize: 18, color: Colors.white)),
             ),
             const SizedBox(height: 8),
             Container(
@@ -552,6 +626,51 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
               child: Text(_fileName, style: TextStyle(color: textColor), textAlign: TextAlign.center),
             ),
             const SizedBox(height: 12),
+
+            // اختيار الفصل الدراسي
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Center(
+                      child: Text("اختبار الفصل الأول", style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    selected: _selectedSemester == 1,
+                    selectedColor: Colors.blueAccent,
+                    labelStyle: TextStyle(
+                      color: _selectedSemester == 1 ? Colors.white : Colors.black87,
+                    ),
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() { _selectedSemester = 1; });
+                        _updateGradedCount();
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Center(
+                      child: Text("اختبار الفصل الثاني", style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    selected: _selectedSemester == 2,
+                    selectedColor: Colors.teal,
+                    labelStyle: TextStyle(
+                      color: _selectedSemester == 2 ? Colors.white : Colors.black87,
+                    ),
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() { _selectedSemester = 2; });
+                        _updateGradedCount();
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
             Align(
               alignment: Alignment.centerRight,
               child: Text("اختر المادة :", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
@@ -580,6 +699,7 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
                         }).toList(),
                   onChanged: (val) {
                     setState(() { _selectedSubject = val; });
+                    _updateGradedCount();
                   },
                 ),
               ),
