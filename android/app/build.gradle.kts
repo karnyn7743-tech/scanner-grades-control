@@ -10,8 +10,8 @@ android {
     ndkVersion = "28.2.13676358"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -48,7 +48,7 @@ android {
     applicationVariants.all {
         outputs.all {
             val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output?.outputFileName = "exam_automation-release.apk"
+            output?.outputFileName = "exams_automation-release.apk"
         }
     }
 }
@@ -58,7 +58,7 @@ flutter {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
 
 // عزل واستبعاد الحزم الزائدة المسببة لتكرار الـ Namespace
