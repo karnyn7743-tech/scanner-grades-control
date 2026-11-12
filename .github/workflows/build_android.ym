@@ -19,7 +19,7 @@ permissions:
 jobs:
   build:
     name: Build Flutter Android APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout Repository
@@ -44,9 +44,9 @@ jobs:
         run: flutter pub get
 
       - name: Build Release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --verbose
 
-      - name: Verify and Rename APK
+      - name: Verify APK
         shell: bash
         run: |
           echo "Searching for generated APK..."
@@ -60,11 +60,8 @@ jobs:
             exit 1
           fi
 
-          cp "$APK" \
-            build/app/outputs/flutter-apk/app-release.apk
-
           echo "APK generated successfully:"
-          ls -lh build/app/outputs/flutter-apk/
+          ls -lh "$APK"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
