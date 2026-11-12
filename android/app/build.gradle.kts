@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -42,14 +43,6 @@ android {
 
     buildFeatures {
         viewBinding = true
-    }
-
-    // تثبيت اسم ملف الـ APK في مسار الإخراج
-    applicationVariants.all {
-        outputs.all {
-            val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output?.outputFileName = "exams_automation-release.apk"
-        }
     }
 }
 
