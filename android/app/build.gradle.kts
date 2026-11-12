@@ -48,7 +48,7 @@ android {
     applicationVariants.all {
         outputs.all {
             val output = this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output?.outputFileName = "app-release.apk"
+            output?.outputFileName = "exam_automation-release.apk"
         }
     }
 }
