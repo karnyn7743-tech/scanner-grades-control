@@ -1,3 +1,4 @@
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -85,6 +86,10 @@ XmlDocument _readXml(Archive archive, String path) {
   return XmlDocument.parse(utf8.decode(content));
 }
 
+// ═══════════════════════════════════════════════════════════
+// استبدال ملف XML داخل الأرشيف
+// ═══════════════════════════════════════════════════════════
+
 void _replaceXml(Archive archive, String path, XmlDocument document) {
   final bytes = utf8.encode(
     document.toXmlString(
@@ -93,8 +98,12 @@ void _replaceXml(Archive archive, String path, XmlDocument document) {
     ),
   );
 
-  archive.files.removeWhere((file) => file.name == path);
-  archive.addFile(ArchiveFile(path, bytes.length, bytes));
+  // قائمة archive.files غير قابلة للتعديل.
+  // addFile يستبدل الملف الموجود تلقائياً عند تطابق المسار.
+  // لذلك لا نستخدم removeWhere أو أي عملية حذف من القائمة.
+  archive.addFile(
+    ArchiveFile(path, bytes.length, bytes),
+  );
 }
 
 XmlElement? _firstElement(XmlNode parent, String localName) {
