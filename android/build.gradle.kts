@@ -1,3 +1,12 @@
+
+// توحيد مجلدات البناء مع المسار الذي يتوقعه Flutter في جذر المشروع.
+val flutterBuildDir = rootProject.layout.projectDirectory.dir("../build")
+rootProject.layout.buildDirectory.set(flutterBuildDir)
+
+subprojects {
+    layout.buildDirectory.set(flutterBuildDir.dir(name))
+}
+
 allprojects {
     tasks.withType<JavaCompile>().configureEach {
         sourceCompatibility = JavaVersion.VERSION_17.toString()
@@ -17,7 +26,6 @@ subprojects {
             val androidExt = project.extensions.findByName("android")
 
             if (androidExt is com.android.build.gradle.BaseExtension) {
-
                 // توحيد compileSdk لجميع إضافات Android
                 androidExt.compileSdkVersion(36)
 
