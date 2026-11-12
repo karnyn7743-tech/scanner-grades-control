@@ -15,7 +15,13 @@ subprojects {
 
         if (project.hasProperty("android")) {
             val androidExt = project.extensions.findByName("android")
+
             if (androidExt is com.android.build.gradle.BaseExtension) {
+
+                // توحيد compileSdk لجميع إضافات Android
+                androidExt.compileSdkVersion(36)
+
+                // تثبيت توافق Java
                 androidExt.compileOptions {
                     sourceCompatibility = JavaVersion.VERSION_17
                     targetCompatibility = JavaVersion.VERSION_17
@@ -25,7 +31,9 @@ subprojects {
 
         tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
             compilerOptions {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                jvmTarget.set(
+                    org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                )
             }
         }
     }
