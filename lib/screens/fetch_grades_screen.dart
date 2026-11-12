@@ -89,7 +89,7 @@ void _replaceXml(Archive archive, String path, XmlDocument document) {
   final bytes = utf8.encode(
     document.toXmlString(
       pretty: false,
-      preserveWhitespace: true,
+      preserveWhitespace: (node) => true,
     ),
   );
 
