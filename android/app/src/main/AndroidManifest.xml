@@ -20,7 +20,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:label="الأتمتة كنترول الإختبارات"
+        android:label="أتمتة كنترول الإختبارات"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:requestLegacyExternalStorage="true"
