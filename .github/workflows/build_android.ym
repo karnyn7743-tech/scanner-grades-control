@@ -1,0 +1,62 @@
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Flutter Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Download Project
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Java
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 3. Setup Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # 4. Check Flutter
+      - name: Flutter Version
+        run: flutter --version
+
+      # 5. Install Dependencies
+      - name: Get Dependencies
+        run: flutter pub get
+
+      # 6. Build Android APK
+      - name: Build Release APK
+        run: flutter build apk --release
+
+      # 7. Upload APK
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Exam-Maker-Android-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
