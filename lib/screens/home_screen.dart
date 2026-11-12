@@ -2,9 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'generate_qr_screen.dart';
-import 'exam_paper_generator_screen.dart'; // استيراد شاشة توليد الأوراق
+import 'exam_paper_generator_screen.dart';
 import 'scan_qr_screen.dart';
 import 'grade_screen.dart';
+import 'fetch_grades_screen.dart'; // استيراد شاشة جلب درجات المحصلات
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -43,7 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 2. الزر الثاني (المضاف في الترتيب الثاني)
+            // 2. الزر الثاني
             _buildMainButton(
               context,
               title: 'توليد قوالب أوراق الاختبارات',
@@ -83,6 +84,46 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+            const SizedBox(height: 20),
+
+            // 5. الزر الخامس: جلب درجات المحصلات
+            SizedBox(
+              width: double.infinity,
+              height: 80,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const FetchGradesScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.download_done,
+                  size: 32,
+                  color: Colors.black,
+                ),
+                label: const Text(
+                  'جلب درجات المحصلات من ملف أعمال السنة',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFB6D9),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 6,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -103,7 +144,11 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icon(icon, size: 32, color: Colors.white),
         label: Text(
           title,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
           textAlign: TextAlign.center,
         ),
         style: ElevatedButton.styleFrom(
