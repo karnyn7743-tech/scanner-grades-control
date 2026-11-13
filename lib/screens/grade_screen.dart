@@ -313,6 +313,73 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
     return rawSheetXml;
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // تحديث القيمة المخزنة <v> لدالة المجموع في الصف المعدل مع إبقاء المعادلة <f>
+  // ═══════════════════════════════════════════════════════════
+
+  String _recalculateRowSumsInXml(String rawSheetXml, int rowNum) {
+    final rowPattern = RegExp(
+      r'(<row\b[^>]*\br="' + rowNum.toString() + r'"[^>]*>)(.*?)(</row>)',
+      dotAll: true,
+    );
+
+    return rawSheetXml.replaceFirstMapped(rowPattern, (rowMatch) {
+      final rowOpen = rowMatch.group(1)!;
+      String rowBody = rowMatch.group(2)!;
+      final rowClose = rowMatch.group(3)!;
+
+      final Map<String, double> cellNums = {};
+      final cellRegex = RegExp(
+        r'<c\b[^>]*\br="([A-Z]+)' + rowNum.toString() + r'"[^>]*>(?:.*?<v>([^<]+)</v>)?.*?</c>',
+        dotAll: true,
+      );
+
+      for (final cm in cellRegex.allMatches(rowBody)) {
+        final colLetters = cm.group(1)!;
+        final vText = cm.group(2);
+        if (vText != null) {
+          final parsed = double.tryParse(vText.trim());
+          if (parsed != null) {
+            cellNums[colLetters] = parsed;
+          }
+        }
+      }
+
+      // أعمدة المجموع لكل مادة في ورقة statment: I(8), N(13), S(18), X(23), ..., CA(78)
+      for (int baseCol = 4; baseCol <= 74; baseCol += 5) {
+        final sumColLetter = _columnLetters(baseCol + 4);
+        final sumRef = '$sumColLetter$rowNum';
+
+        double sum = 0;
+        bool hasAnyGrade = false;
+        for (int offset = 0; offset < 4; offset++) {
+          final gradeColLetter = _columnLetters(baseCol + offset);
+          if (cellNums.containsKey(gradeColLetter)) {
+            sum += cellNums[gradeColLetter]!;
+            hasAnyGrade = true;
+          }
+        }
+
+        if (hasAnyGrade) {
+          final formattedSum = sum == sum.roundToDouble()
+              ? sum.toInt().toString()
+              : sum.toString();
+
+          final sumCellPattern = RegExp(
+            r'(<c\b[^>]*\br="' + sumRef + r'"[^>]*>.*?<f[^>]*>.*?</f>)(?:<v>.*?</v>)?(</c>)',
+            dotAll: true,
+          );
+
+          rowBody = rowBody.replaceFirstMapped(sumCellPattern, (sm) {
+            return '${sm.group(1)}<v>$formattedSum</v>${sm.group(2)}';
+          });
+        }
+      }
+
+      return '$rowOpen$rowBody$rowClose';
+    });
+  }
+
   Uint8List _rebuildCleanXlsxArchive(
     Archive originalArchive,
     String updatedSheetPath,
@@ -329,6 +396,26 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
 
       if (entryPath == normalizedUpdatedPath) {
         final bytes = utf8.encode(updatedSheetXmlString);
+        cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+        continue;
+      }
+
+      if (entryPath == 'xl/workbook.xml') {
+        String rawXml = utf8.decode(file.content as List<int>);
+        if (rawXml.contains('<calcPr')) {
+          if (rawXml.contains('fullCalcOnLoad=')) {
+            rawXml = rawXml.replaceAll(
+              RegExp(r'fullCalcOnLoad="[^"]*"'),
+              'fullCalcOnLoad="1"',
+            );
+          } else {
+            rawXml = rawXml.replaceFirst(
+              '<calcPr',
+              '<calcPr fullCalcOnLoad="1"',
+            );
+          }
+        }
+        final bytes = utf8.encode(rawXml);
         cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
         continue;
       }
@@ -836,8 +923,10 @@ class _GradeEntryScreenState extends State<GradeEntryScreen> {
 
       final patchedXml =
           _patchSingleCellInXml(rawSheetXml, cellRef, rawGradeStr);
+      final updatedWithSumsXml =
+          _recalculateRowSumsInXml(patchedXml, matchedRowIndex + 1);
       final finalBytes =
-          _rebuildCleanXlsxArchive(archive, sheetPath, patchedXml);
+          _rebuildCleanXlsxArchive(archive, sheetPath, updatedWithSumsXml);
 
       // الكتابة الذرية الآمنة للحفاظ على سلامة الملف
       final tempFile = File('$currentPath.tmp');
