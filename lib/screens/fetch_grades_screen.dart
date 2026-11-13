@@ -1,34 +1,64 @@
-
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart';
 
 // ═══════════════════════════════════════════════════════════
-// أدوات توحيد القيم قبل المطابقة
+// أدوات توحيد النصوص والأرقام قبل المطابقة
 // ═══════════════════════════════════════════════════════════
+
+String _normalizeArabicText(dynamic value) {
+  if (value == null) return '';
+
+  return value
+      .toString()
+      .trim()
+      .replaceAll(RegExp(r'[\u064B-\u065F\u0670\u0640]'), '') // إزالة التشكيل والتطويل
+      .replaceAll('أ', 'ا')
+      .replaceAll('إ', 'ا')
+      .replaceAll('آ', 'ا')
+      .replaceAll('ة', 'ه')
+      .replaceAll('ى', 'ي')
+      .replaceAll(RegExp(r'\s+'), '');
+}
 
 String _normalizeHeader(dynamic value) {
   if (value == null) return '';
 
-  return value.toString()
+  return value
+      .toString()
       .trim()
       .replaceAll(RegExp(r'\s+'), '')
       .replaceAll('١', '1')
       .replaceAll('٢', '2')
       .replaceAll('۳', '3')
-      .replaceAll('٣', '3');
+      .replaceAll('٣', '3')
+      .replaceAll('٤', '4');
 }
 
 String _normalizeSeat(dynamic value) {
   if (value == null) return '';
 
-  String text = value.toString().trim().replaceAll(',', '');
+  String text = value
+      .toString()
+      .trim()
+      .replaceAll(',', '')
+      .replaceAll('٠', '0')
+      .replaceAll('١', '1')
+      .replaceAll('٢', '2')
+      .replaceAll('٣', '3')
+      .replaceAll('٤', '4')
+      .replaceAll('٥', '5')
+      .replaceAll('٦', '6')
+      .replaceAll('٧', '7')
+      .replaceAll('٨', '8')
+      .replaceAll('٩', '9');
 
   final numeric = num.tryParse(text);
 
@@ -40,7 +70,7 @@ String _normalizeSeat(dynamic value) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// أدوات التعامل مع بنية XLSX الداخلية
+// أدوات التعامل مع بنية XLSX الداخلية بأمان
 // ═══════════════════════════════════════════════════════════
 
 const String _relationshipNamespace =
@@ -86,26 +116,6 @@ XmlDocument _readXml(Archive archive, String path) {
   return XmlDocument.parse(utf8.decode(content));
 }
 
-// ═══════════════════════════════════════════════════════════
-// استبدال ملف XML داخل الأرشيف
-// ═══════════════════════════════════════════════════════════
-
-void _replaceXml(Archive archive, String path, XmlDocument document) {
-  final bytes = utf8.encode(
-    document.toXmlString(
-      pretty: false,
-      preserveWhitespace: (node) => true,
-    ),
-  );
-
-  // قائمة archive.files غير قابلة للتعديل.
-  // addFile يستبدل الملف الموجود تلقائياً عند تطابق المسار.
-  // لذلك لا نستخدم removeWhere أو أي عملية حذف من القائمة.
-  archive.addFile(
-    ArchiveFile(path, bytes.length, bytes),
-  );
-}
-
 XmlElement? _firstElement(XmlNode parent, String localName) {
   for (final child in parent.children) {
     if (child is XmlElement && child.name.local == localName) {
@@ -141,7 +151,6 @@ String? _relationshipId(XmlElement element) {
     }
   }
 
-  // توافق مع بعض الملفات التي لا تحتفظ ببادئة namespace المتوقعة.
   for (final attribute in element.attributes) {
     if (attribute.name.local == 'id') {
       return attribute.value;
@@ -156,18 +165,32 @@ String _getWorksheetPath(Archive archive, String sheetName) {
   final relationships = _readXml(archive, 'xl/_rels/workbook.xml.rels');
 
   final sheets = _elements(workbook, 'sheet');
+  final targetNormalized = _normalizeArabicText(sheetName);
 
   XmlElement? selectedSheet;
 
+  // 1. مطابقة حرفية أولاً
   for (final sheet in sheets) {
-    if (_attribute(sheet, 'name') == sheetName) {
+    final name = _attribute(sheet, 'name');
+    if (name != null && name.trim() == sheetName.trim()) {
       selectedSheet = sheet;
       break;
     }
   }
 
+  // 2. مطابقة موحدة للنص العربي (لتجاوز المسافات أو اختلاف الهمزات)
   if (selectedSheet == null) {
-    throw Exception('لم يتم العثور على ورقة العمل ($sheetName).');
+    for (final sheet in sheets) {
+      final name = _attribute(sheet, 'name');
+      if (name != null && _normalizeArabicText(name) == targetNormalized) {
+        selectedSheet = sheet;
+        break;
+      }
+    }
+  }
+
+  if (selectedSheet == null) {
+    throw Exception('لم يتم العثور على ورقة العمل ($sheetName) في ملف أعمال السنة.');
   }
 
   final relationId = _relationshipId(selectedSheet);
@@ -224,20 +247,6 @@ List<String> _readSharedStrings(Archive archive) {
 // تحويل مرجع الخلية مثل A1 أو AB25 إلى رقم العمود والصف
 // ═══════════════════════════════════════════════════════════
 
-int _columnFromReference(String reference) {
-  final match = RegExp(r'^([A-Z]+)').firstMatch(reference.toUpperCase());
-
-  if (match == null) return -1;
-
-  int result = 0;
-
-  for (final code in match.group(1)!.codeUnits) {
-    result = result * 26 + code - 64;
-  }
-
-  return result - 1;
-}
-
 String _columnLetters(int column) {
   int number = column + 1;
   String result = '';
@@ -283,8 +292,6 @@ dynamic _readCellValue(
 
   final valueElement = _firstElement(cell, 'v');
 
-  // إذا كانت الخلية تحتوي على معادلة، فإن v يمثل آخر نتيجة
-  // محفوظة بواسطة Excel، وليس نص المعادلة.
   if (valueElement == null) return null;
 
   final raw = valueElement.innerText.trim();
@@ -294,9 +301,7 @@ dynamic _readCellValue(
   if (type == 's') {
     final index = int.tryParse(raw);
 
-    if (index == null ||
-        index < 0 ||
-        index >= sharedStrings.length) {
+    if (index == null || index < 0 || index >= sharedStrings.length) {
       return null;
     }
 
@@ -308,11 +313,11 @@ dynamic _readCellValue(
   }
 
   if (type == 'str') {
-    return raw;
+    final number = num.tryParse(raw);
+    return number ?? raw;
   }
 
   if (type == 'e') {
-    // لا ننقل أخطاء المعادلات إلى ملف الأتمتة.
     return null;
   }
 
@@ -394,7 +399,117 @@ dynamic _getValueAt(
 }
 
 // ═══════════════════════════════════════════════════════════
-// كتابة قيمة ثابتة في خلية دون المساس بتنسيقها
+// احتساب احتياطي للمحصلة في حال حفظ الملف دون قيمة <v> مخزنة
+// ═══════════════════════════════════════════════════════════
+
+num? _extractValidMahsalaScore(
+  Map<int, XmlElement> sourceRows,
+  int sourceGradeCol,
+  int rowIndex,
+  List<String> sourceSharedStrings,
+) {
+  // 1. القراءة المباشرة للقيمة المحسوبة المخزنة في خلية المحصلة (Y أو AU)
+  final directVal = _getValueAt(
+    sourceRows,
+    sourceGradeCol,
+    rowIndex,
+    sourceSharedStrings,
+  );
+
+  if (directVal != null) {
+    final parsed = directVal is num
+        ? directVal
+        : num.tryParse(directVal.toString().trim());
+    if (parsed != null && parsed >= 0 && parsed <= 20) {
+      return parsed;
+    }
+  }
+
+  // 2. احتساب احتياطي مطابق لمعادلة ملف أعمال السنة إذا كان الملف محفوظاً من الجوال بدون كاش <v>
+  // في ملف أعمال السنة: Y (col 24) يعتمد على مجاميع الأشهر (I=8, N=13, S=18, X=23) وعدد الأشهر في Y3 (row 2)
+  // و AU (col 46) يعتمد على مجاميع الأشهر (AE=30, AJ=35, AO=40, AT=45) وعدد الأشهر في AU3 (row 2)
+  final monthsCountVal = _getValueAt(
+    sourceRows,
+    sourceGradeCol,
+    2,
+    sourceSharedStrings,
+  );
+
+  final int? monthsCount = monthsCountVal is num
+      ? monthsCountVal.toInt()
+      : int.tryParse(monthsCountVal?.toString().trim() ?? '');
+
+  if (monthsCount == null || monthsCount < 1 || monthsCount > 4) {
+    return null;
+  }
+
+  // تحديد أعمدة مجاميع الأشهر الأربعة السابقة لعمود المحصلة
+  // كل شهر = 5 أعمدة (واجبات، شفهي، مواظبة، تحريري، مج)، ومجموع الشهر يقع قبل عمود المحصلة بـ 16, 11, 6, 1
+  final monthTotalCols = [
+    sourceGradeCol - 16, // الشهر الأول (I أو AE)
+    sourceGradeCol - 11, // الشهر الثاني (N أو AJ)
+    sourceGradeCol - 6,  // الشهر الثالث (S أو AO)
+    sourceGradeCol - 1,  // الشهر الرابع (X أو AT)
+  ];
+
+  double sumMonths = 0;
+
+  for (int m = 0; m < monthsCount; m++) {
+    final totalCol = monthTotalCols[m];
+    if (totalCol < 4) return null;
+
+    // قراءة مجموع الشهر من عمود (مج) أو جمعه من مكوناته الأربعة
+    final monthTotalVal = _getValueAt(
+      sourceRows,
+      totalCol,
+      rowIndex,
+      sourceSharedStrings,
+    );
+
+    num? mScore = monthTotalVal is num
+        ? monthTotalVal
+        : num.tryParse(monthTotalVal?.toString().trim() ?? '');
+
+    if (mScore == null) {
+      // جمع مكونات الشهر الأربعة (واجبات + شفهي + مواظبة + تحريري)
+      bool hasAnyComponent = false;
+      double compSum = 0;
+      for (int offset = 4; offset >= 1; offset--) {
+        final compVal = _getValueAt(
+          sourceRows,
+          totalCol - offset,
+          rowIndex,
+          sourceSharedStrings,
+        );
+        final compNum = compVal is num
+            ? compVal
+            : num.tryParse(compVal?.toString().trim() ?? '');
+        if (compNum != null) {
+          hasAnyComponent = true;
+          compSum += compNum.toDouble();
+        }
+      }
+      if (!hasAnyComponent) {
+        // حسب معادلة الملف: إذا كان أحد الأشهر المطلوبة فارغاً، النتيجة تكون "" (فارغة)
+        return null;
+      }
+      mScore = compSum;
+    }
+
+    sumMonths += mScore.toDouble();
+  }
+
+  // تطبيق معادلة ROUNDUP(SUM / (5 * monthsCount), 0)
+  final result = (sumMonths / (5.0 * monthsCount)).ceil();
+  if (result >= 0 && result <= 20) {
+    return result;
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// كتابة قيمة ثابتة (لصق قيم) دون المساس بالتنسيق أو الدوال
 // ═══════════════════════════════════════════════════════════
 
 XmlElement _getOrCreateCell(
@@ -441,7 +556,7 @@ void _writeConstantValue(
   Map<int, XmlElement> rows,
   int column,
   int rowIndex,
-  dynamic value,
+  num value,
 ) {
   final cell = _getOrCreateCell(
     sheetData,
@@ -450,70 +565,95 @@ void _writeConstantValue(
     rowIndex,
   );
 
-  // حذف محتويات الخلية السابقة فقط، مع الإبقاء على خصائصها
-  // مثل style (s) والمرجع (r).
+  // الإبقاء التام على خاصية التنسيق s="..." والمرجع r="..."
   final oldChildren = cell.children.toList();
-
   for (final child in oldChildren) {
     cell.children.remove(child);
   }
 
   final oldType = _attribute(cell, 't');
-
   if (oldType != null) {
     cell.removeAttribute('t');
   }
 
-  if (value is bool) {
-    cell.setAttribute('t', 'b');
+  final formattedValue =
+      value == value.roundToDouble() ? value.toInt().toString() : value.toString();
 
-    cell.children.add(
-      XmlElement(
-        XmlName('v'),
-        [],
-        [XmlText(value ? '1' : '0')],
-      ),
-    );
-
-    return;
-  }
-
-  if (value is num) {
-    // الرقم يكتب كقيمة رقمية ثابتة وليس كمعادلة.
-    cell.children.add(
-      XmlElement(
-        XmlName('v'),
-        [],
-        [XmlText(value.toString())],
-      ),
-    );
-
-    return;
-  }
-
-  // النصوص تكتب بصيغة inlineStr لتجنب تعديل sharedStrings.xml.
-  cell.setAttribute('t', 'inlineStr');
-
-  final inline = XmlElement(XmlName('is'));
-
-  inline.children.add(
+  cell.children.add(
     XmlElement(
-      XmlName('t'),
-      [
-        XmlAttribute(
-          XmlName('space', 'http://www.w3.org/XML/1998/namespace'),
-          'preserve',
-        ),
-      ],
-      [XmlText(value.toString())],
+      XmlName('v'),
+      [],
+      [XmlText(formattedValue)],
     ),
   );
-
-  cell.children.add(inline);
 }
 
 // ═══════════════════════════════════════════════════════════
-// جلب الدرجات وتحديث ملف الأتمتة مباشرة
+// إعادة بناء أرشيف XLSX بشكل نظيف يمنع رسالة الاسترداد والقراءة فقط
+// ═══════════════════════════════════════════════════════════
+
+Uint8List _rebuildCleanXlsxArchive(
+  Archive originalArchive,
+  String updatedSheetPath,
+  String updatedSheetXmlString,
+) {
+  final cleanArchive = Archive();
+
+  // إزالة calcChain.xml حتى يعيد Excel بناء سلسلة الحساب تلقائياً دون تعارض أو تلف
+  final normalizedUpdatedPath = _normalizeZipPath(updatedSheetPath);
+
+  for (final file in originalArchive.files) {
+    if (!file.isFile) continue;
+
+    final entryPath = _normalizeZipPath(file.name);
+
+    // تجاهل calcChain.xml لإجبار Excel على تحديث مجاميع المواد تلقائياً بسلام
+    if (entryPath == 'xl/calcChain.xml') {
+      continue;
+    }
+
+    if (entryPath == normalizedUpdatedPath) {
+      final bytes = utf8.encode(updatedSheetXmlString);
+      cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      continue;
+    }
+
+    if (entryPath == '[Content_Types].xml') {
+      final rawXml = utf8.decode(file.content as List<int>);
+      final cleanedContentTypes = rawXml.replaceAll(
+        RegExp(r'<Override[^>]*PartName="/xl/calcChain\.xml"[^>]*/?>'),
+        '',
+      );
+      final bytes = utf8.encode(cleanedContentTypes);
+      cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      continue;
+    }
+
+    if (entryPath == 'xl/_rels/workbook.xml.rels') {
+      final rawXml = utf8.decode(file.content as List<int>);
+      final cleanedRels = rawXml.replaceAll(
+        RegExp(r'<Relationship[^>]*Target="calcChain\.xml"[^>]*/?>'),
+        '',
+      );
+      final bytes = utf8.encode(cleanedRels);
+      cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      continue;
+    }
+
+    final rawContent = file.content as List<int>;
+    cleanArchive.addFile(ArchiveFile(file.name, rawContent.length, rawContent));
+  }
+
+  final encoded = ZipEncoder().encode(cleanArchive);
+  if (encoded == null) {
+    throw Exception('فشل ضغط ملف الأتمتة المحدث.');
+  }
+
+  return Uint8List.fromList(encoded);
+}
+
+// ═══════════════════════════════════════════════════════════
+// جلب الدرجات في معالج منفصل (قراءة فقط للمصدر، لصق قيم للهدف)
 // ═══════════════════════════════════════════════════════════
 
 Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
@@ -533,42 +673,26 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       };
     }
 
-    if (targetPath.toLowerCase().endsWith('.xlsx') == false ||
-        sourcePath.toLowerCase().endsWith('.xlsx') == false) {
+    if (!targetPath.toLowerCase().endsWith('.xlsx') ||
+        !sourcePath.toLowerCase().endsWith('.xlsx')) {
       return {
         'success': false,
         'message': 'يجب أن يكون الملفان بصيغة XLSX.',
       };
     }
 
-    // قراءة ملفي XLSX كأرشيف ZIP.
-    final targetArchive = ZipDecoder().decodeBytes(
-      targetFile.readAsBytesSync(),
-    );
+    // قراءة ملف أعمال السنة في الذاكرة فقط (Read-Only) دون أي مساس بالملف على القرص
+    final sourceBytes = sourceFile.readAsBytesSync();
+    final targetBytes = targetFile.readAsBytesSync();
 
-    final sourceArchive = ZipDecoder().decodeBytes(
-      sourceFile.readAsBytesSync(),
-    );
+    final sourceArchive = ZipDecoder().decodeBytes(sourceBytes);
+    final targetArchive = ZipDecoder().decodeBytes(targetBytes);
 
-    final targetSheetPath = _getWorksheetPath(
-      targetArchive,
-      'statment',
-    );
+    final targetSheetPath = _getWorksheetPath(targetArchive, 'statment');
+    final sourceSheetPath = _getWorksheetPath(sourceArchive, subjectName);
 
-    final sourceSheetPath = _getWorksheetPath(
-      sourceArchive,
-      subjectName,
-    );
-
-    final targetDocument = _readXml(
-      targetArchive,
-      targetSheetPath,
-    );
-
-    final sourceDocument = _readXml(
-      sourceArchive,
-      sourceSheetPath,
-    );
+    final targetDocument = _readXml(targetArchive, targetSheetPath);
+    final sourceDocument = _readXml(sourceArchive, sourceSheetPath);
 
     final targetSharedStrings = _readSharedStrings(targetArchive);
     final sourceSharedStrings = _readSharedStrings(sourceArchive);
@@ -579,17 +703,16 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
     final targetRows = _getRows(targetSheetData);
     final sourceRows = _getRows(sourceSheetData);
 
-    // إيجاد آخر صف فعلي في كل ورقة.
     final targetMaxRow = targetRows.keys.isEmpty
         ? 0
-        : targetRows.keys.reduce((a, b) => a > b ? a : b);
+        : targetRows.keys.reduce(math.max);
 
     final sourceMaxRow = sourceRows.keys.isEmpty
         ? 0
-        : sourceRows.keys.reduce((a, b) => a > b ? a : b);
+        : sourceRows.keys.reduce(math.max);
 
-    // ملف الأتمتة: أسماء المواد في الصف الثالث (index 2)،
-    // بدءاً من العمود E (index 4).
+    // 1. البحث عن المادة في الصف الثالث (index 2) من ملف الأتمتة بمطابقة عربية مرنة
+    final normalizedSubject = _normalizeArabicText(subjectName);
     int targetBaseCol = -1;
 
     for (int c = 4; c < 500; c++) {
@@ -600,7 +723,8 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
         targetSharedStrings,
       );
 
-      if (value != null && value.toString().trim() == subjectName) {
+      if (value != null &&
+          _normalizeArabicText(value.toString()) == normalizedSubject) {
         targetBaseCol = c;
         break;
       }
@@ -614,12 +738,11 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       };
     }
 
-    // م١ في أول عمود من مجموعة المادة، وم٢ في العمود الثالث.
-    final int targetGradeCol = mahsalaType == 'م١'
-        ? targetBaseCol
-        : targetBaseCol + 2;
+    // م١ في العمود الأول للمادة، وم٢ في العمود الثالث
+    final int targetGradeCol =
+        _normalizeHeader(mahsalaType) == 'م1' ? targetBaseCol : targetBaseCol + 2;
 
-    // التحقق من عنوان العمود المستهدف في الصف الخامس.
+    // التحقق من عنوان العمود المستهدف في الصف الخامس (index 4)
     final targetSubHeader = _getValueAt(
       targetRows,
       targetGradeCol,
@@ -627,8 +750,7 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       targetSharedStrings,
     );
 
-    if (_normalizeHeader(targetSubHeader) !=
-        _normalizeHeader(mahsalaType)) {
+    if (_normalizeHeader(targetSubHeader) != _normalizeHeader(mahsalaType)) {
       return {
         'success': false,
         'message':
@@ -636,9 +758,8 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       };
     }
 
-    // البحث عن م١ أو م٢ في الصف الثاني من ورقة المصدر.
+    // 2. البحث عن عمود م١ أو م٢ في الصف الثاني (index 1) من ورقة المصدر
     final String wantedHeader = _normalizeHeader(mahsalaType);
-
     int sourceGradeCol = -1;
 
     for (int c = 4; c < 500; c++) {
@@ -663,11 +784,12 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       };
     }
 
-    // إنشاء قاموس رقم القيد ← القيمة المحسوبة للدرجة.
-    // الصف الرابع هو بداية البيانات (index 3).
-    final Map<String, dynamic> gradesMap = {};
+    // 3. مسح جميع صفوف ورقة أعمال السنة (شبيه VLOOKUP) والتقاط أول صف به محصلة صالحة (0 إلى 20)
+    // حتى لو كانت المحصلات لصف دراسي معين في منتصف أو نهاية الجدول
+    final Map<String, num> gradesMap = {};
+    int? firstFoundStudentRow;
 
-    for (int r = 3; r < sourceMaxRow; r++) {
+    for (int r = 3; r <= sourceMaxRow; r++) {
       final seatValue = _getValueAt(
         sourceRows,
         0,
@@ -676,30 +798,38 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       );
 
       final seat = _normalizeSeat(seatValue);
-
       if (seat.isEmpty) continue;
 
-      final gradeCell = _findCell(
+      final validScore = _extractValidMahsalaScore(
         sourceRows,
         sourceGradeCol,
         r,
-      );
-
-      // قراءة <v> المحفوظة حتى إذا كانت الخلية تحتوي على معادلة.
-      final grade = _readCellValue(
-        gradeCell,
         sourceSharedStrings,
       );
 
-      gradesMap[seat] = grade;
+      // تجاهل الصفوف الفارغة (التي لم تُرصد درجاتها أو تخص صفوفاً دراسية أخرى)
+      if (validScore == null) continue;
+
+      firstFoundStudentRow ??= (r + 1);
+      gradesMap[seat] = validScore;
     }
 
-    // المرور على طلاب الأتمتة من الصف السادس (index 5).
+    if (gradesMap.isEmpty) {
+      return {
+        'success': true,
+        'count': 0,
+        'unmatched': 0,
+        'emptyGrades': 0,
+        'message':
+            'لم توجد أي محصلات رقمية مرصودة (من 0 إلى 20) في ورقة ($subjectName) لـ ($mahsalaType).',
+      };
+    }
+
+    // 4. المطابقة بدلالة رقم القيد/الجلوس واللصق كقيم ثابتة في ملف الأتمتة
     int updatedCount = 0;
     int unmatchedCount = 0;
-    int emptyGradeCount = 0;
 
-    for (int r = 5; r < targetMaxRow; r++) {
+    for (int r = 5; r <= targetMaxRow; r++) {
       final seatValue = _getValueAt(
         targetRows,
         0,
@@ -708,18 +838,11 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
       );
 
       final seat = _normalizeSeat(seatValue);
-
       if (seat.isEmpty) continue;
 
       if (gradesMap.containsKey(seat)) {
-        final grade = gradesMap[seat];
+        final grade = gradesMap[seat]!;
 
-        if (grade == null || grade.toString().trim().isEmpty) {
-          emptyGradeCount++;
-          continue;
-        }
-
-        // كتابة الدرجة كقيمة ثابتة فقط، دون نقل المعادلة.
         _writeConstantValue(
           targetSheetData,
           targetRows,
@@ -739,44 +862,34 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
         'success': true,
         'count': 0,
         'unmatched': unmatchedCount,
-        'sourceGradeColumn': sourceGradeCol + 1,
-        'targetGradeColumn': targetGradeCol + 1,
-        'emptyGrades': emptyGradeCount,
-        'message': 'لم توجد درجات صالحة للتحديث.',
+        'emptyGrades': 0,
+        'message':
+            'تم العثور على (${gradesMap.length}) محصلة في أعمال السنة، لكن أرقام القيد لم تتطابق مع ملف الأتمتة.',
       };
     }
 
-    // استبدال ملف XML الخاص بورقة statment فقط.
-    // بقية مكونات المصنف لا يعاد إنشاؤها.
-    _replaceXml(
+    // 5. توليد XML النظيف وإعادة بناء أرشيف XLSX بشكل سليم
+    final updatedXmlString = targetDocument.toXmlString(pretty: false);
+    final finalXlsxBytes = _rebuildCleanXlsxArchive(
       targetArchive,
       targetSheetPath,
-      targetDocument,
+      updatedXmlString,
     );
 
-    // إعادة ضغط الأرشيف بعد تعديل ورقة العمل المطلوبة.
-    final updatedBytes = ZipEncoder().encode(targetArchive);
-
-    if (updatedBytes == null) {
-      return {
-        'success': false,
-        'message': 'تعذر حفظ التغييرات داخل ملف XLSX.',
-      };
+    // الكتابة الذرية (Atomic Write) في ملف الأتمتة فقط
+    final tempOutput = File('$targetPath.tmp');
+    tempOutput.writeAsBytesSync(finalXlsxBytes, flush: true);
+    if (targetFile.existsSync()) {
+      targetFile.deleteSync();
     }
-
-    // الكتابة مباشرة على مسار ملف الأتمتة المحدد.
-    targetFile.writeAsBytesSync(
-      updatedBytes,
-      flush: true,
-    );
+    tempOutput.renameSync(targetPath);
 
     return {
       'success': true,
       'count': updatedCount,
       'unmatched': unmatchedCount,
-      'sourceGradeColumn': sourceGradeCol + 1,
-      'targetGradeColumn': targetGradeCol + 1,
-      'emptyGrades': emptyGradeCount,
+      'firstRow': firstFoundStudentRow,
+      'sourceCount': gradesMap.length,
     };
   } catch (e) {
     return {
@@ -811,7 +924,7 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
   bool _isLoading = false;
 
   // ═════════════════════════════════════════════════════════
-  // تحديد مجلد درجات الطلاب
+  // تحديد مجلد العمل لملف الأتمتة
   // ═════════════════════════════════════════════════════════
 
   Future<Directory> _getGradesDirectory() async {
@@ -843,21 +956,24 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
   }
 
   // ═════════════════════════════════════════════════════════
-  // وضع الملف في مجلد العمل الدائم
+  // نسخ ملف الأتمتة فقط إلى مجلد العمل الدائم
   // ═════════════════════════════════════════════════════════
 
-  Future<String?> _copyToPermanent(
-    String sourcePath,
+  Future<String> _copyTargetToPermanent(
+    String cachePath,
     String originalName,
   ) async {
     final targetDir = await _getGradesDirectory();
+    final destination = File('${targetDir.path}/$originalName');
 
-    final destination = File(
-      '${targetDir.path}/$originalName',
-    );
+    // إذا كان الملف موجوداً مسبقاً في مجلد العمل ويحتوي على درجات سابقة تم جلبها،
+    // نتحقق هل المستخدم اختاره من مجلد العمل نفسه أم يريد العمل على النسخة المحدثة
+    if (File(cachePath).parent.path == targetDir.path) {
+      return cachePath;
+    }
 
     await destination.writeAsBytes(
-      await File(sourcePath).readAsBytes(),
+      await File(cachePath).readAsBytes(),
       flush: true,
     );
 
@@ -865,7 +981,7 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
   }
 
   // ═════════════════════════════════════════════════════════
-  // اختيار ملف الأتمتة واستخراج المواد منه
+  // اختيار ملف الأتمتة والتحقق من هويته واستخراج المواد
   // ═════════════════════════════════════════════════════════
 
   Future<void> _pickTargetFile() async {
@@ -879,35 +995,32 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final cachePath = result.files.single.path!;
+      final pickedPath = result.files.single.path!;
       final fileName = result.files.single.name;
 
-      final permanentPath = await _copyToPermanent(
-        cachePath,
-        fileName,
+      // فحص الملف أولاً قبل نسخه للتأكد أنه ملف أتمتة وليس ملف أعمال السنة
+      final checkArchive = ZipDecoder().decodeBytes(
+        await File(pickedPath).readAsBytes(),
       );
 
-      if (permanentPath == null) {
-        throw Exception('تعذر الوصول إلى مسار التخزين لحفظ الملف.');
+      final String sheetPath;
+      try {
+        sheetPath = _getWorksheetPath(checkArchive, 'statment');
+      } catch (_) {
+        throw Exception(
+          'الملف المختار ($fileName) ليس ملف أتمتة صالحاً (لا يحتوي على ورقة statment). '
+          'تأكد من عدم اختيار ملف أعمال السنة في هذه الخانة.',
+        );
       }
 
-      final archive = ZipDecoder().decodeBytes(
-        await File(permanentPath).readAsBytes(),
-      );
-
-      final sheetPath = _getWorksheetPath(
-        archive,
-        'statment',
-      );
-
-      final document = _readXml(archive, sheetPath);
-      final sharedStrings = _readSharedStrings(archive);
+      final document = _readXml(checkArchive, sheetPath);
+      final sharedStrings = _readSharedStrings(checkArchive);
       final sheetData = _getSheetData(document);
       final rows = _getRows(sheetData);
 
       final List<String> tempSubjects = [];
 
-      // جلب أسماء المواد من الصف الثالث.
+      // جلب أسماء المواد من الصف الثالث (index 2) بدءاً من العمود E (index 4)
       for (int c = 4; c < 500; c += 5) {
         final value = _getValueAt(
           rows,
@@ -923,19 +1036,27 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
         }
       }
 
+      if (tempSubjects.isEmpty) {
+        throw Exception('لم يتم العثور على مواد دراسية في الصف الثالث من ملف الأتمتة.');
+      }
+
+      final permanentPath = await _copyTargetToPermanent(
+        pickedPath,
+        fileName,
+      );
+
       if (!mounted) return;
 
       setState(() {
         _targetPath = permanentPath;
         _targetName = fileName;
         _subjects = tempSubjects;
-        _selectedSubject =
-            _subjects.isNotEmpty ? _subjects.first : null;
+        _selectedSubject = _subjects.isNotEmpty ? _subjects.first : null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم اختيار ملف الأتمتة وجلب المواد بنجاح'),
+        SnackBar(
+          content: Text('تم تحميل ملف الأتمتة (${tempSubjects.length} مادة) بنجاح'),
           backgroundColor: Colors.green,
         ),
       );
@@ -946,6 +1067,7 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
         SnackBar(
           content: Text('خطأ: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
       );
     } finally {
@@ -956,7 +1078,7 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
   }
 
   // ═════════════════════════════════════════════════════════
-  // اختيار ملف المحرر (المصدر)
+  // اختيار ملف أعمال السنة (قراءة فقط - دون أي نسخ أو تعديل)
   // ═════════════════════════════════════════════════════════
 
   Future<void> _pickSourceFile() async {
@@ -970,28 +1092,41 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final cachePath = result.files.single.path!;
+      final pickedPath = result.files.single.path!;
       final fileName = result.files.single.name;
 
-      final permanentPath = await _copyToPermanent(
-        cachePath,
-        fileName,
+      // التحقق من أن الملف المختار هو ملف أعمال السنة وليس ملف الأتمتة
+      final checkArchive = ZipDecoder().decodeBytes(
+        await File(pickedPath).readAsBytes(),
       );
 
-      if (permanentPath == null) {
-        throw Exception('تعذر الوصول إلى مسار التخزين لحفظ الملف.');
+      final workbook = _readXml(checkArchive, 'xl/workbook.xml');
+      final sheets = _elements(workbook, 'sheet');
+      final sheetNames = sheets
+          .map((s) => _attribute(s, 'name') ?? '')
+          .where((n) => n.isNotEmpty)
+          .toList();
+
+      if (sheetNames.length == 1 &&
+          _normalizeArabicText(sheetNames.first) == 'statment') {
+        throw Exception(
+          'الملف المختار ($fileName) هو ملف الأتمتة وليس ملف أعمال السنة!',
+        );
       }
 
       if (!mounted) return;
 
+      // الاحتفاظ بالمسار للقراءة فقط (Read-Only) دون إعادة حفظه أو نسخه
       setState(() {
-        _sourcePath = permanentPath;
+        _sourcePath = pickedPath;
         _sourceName = fileName;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم اختيار ملف المحرر بنجاح'),
+        SnackBar(
+          content: Text(
+            'تم ربط ملف أعمال السنة للقراءة فقط (${sheetNames.length} أوراق مواد)',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -1002,6 +1137,7 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
         SnackBar(
           content: Text('خطأ: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
         ),
       );
     } finally {
@@ -1061,22 +1197,33 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
       if (result['success'] == true) {
         final count = result['count'] ?? 0;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'تم لصق ($count) درجة كقيم ثابتة. '
-              'أرقام قيد بلا تطابق: (${result['unmatched']})، '
-              'ودرجات فارغة: (${result['emptyGrades']}).',
+        if (count == 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('⚠️ ${result['message']}'),
+              backgroundColor: Colors.orange.shade800,
+              duration: const Duration(seconds: 6),
             ),
-            backgroundColor: Colors.green.shade800,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+          );
+        } else {
+          final firstRow = result['firstRow'] ?? '-';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '✅ تم لصق ($count) محصلة كقيم ثابتة لمادة ($_selectedSubject - $_selectedMahsala).\n'
+                'أول صف مرصود في المصدر: صف ($firstRow) | طلاب بلا تطابق: (${result['unmatched']}).',
+              ),
+              backgroundColor: Colors.green.shade800,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ ${result['message']}'),
             backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 6),
           ),
         );
       }
@@ -1132,9 +1279,9 @@ class _FetchGradesScreenState extends State<FetchGradesScreen> {
 
             const SizedBox(height: 16),
 
-            // 2. ملف المحرر (المصدر)
+            // 2. ملف أعمال السنة (المصدر - قراءة فقط)
             _buildCard(
-              title: '2. ملف المحرر (الذي ستُجلب منه الدرجات)',
+              title: '2. ملف أعمال السنة (مصدر للقراءة فقط)',
               icon: Icons.file_open_outlined,
               color: Colors.orangeAccent,
               fileName: _sourceName ?? 'لم يتم اختيار ملف',
