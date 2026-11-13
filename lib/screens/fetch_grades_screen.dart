@@ -589,6 +589,68 @@ void _writeConstantValue(
 }
 
 // ═══════════════════════════════════════════════════════════
+// تحديث القيمة المخزنة <v> لدالة المجموع في الصف المعدل مع إبقاء المعادلة <f>
+// ═══════════════════════════════════════════════════════════
+
+void _updateRowSumCachedValues(
+  Map<int, XmlElement> targetRows,
+  int rowIndex,
+  List<String> targetSharedStrings,
+) {
+  // أعمدة المجموع لكل مادة في ورقة statment: I(8), N(13), S(18), X(23), ..., CA(78)
+  for (int baseCol = 4; baseCol <= 74; baseCol += 5) {
+    final sumCol = baseCol + 4;
+    final sumCell = _findCell(targetRows, sumCol, rowIndex);
+    if (sumCell == null) continue;
+
+    // التأكد أن الخلية تحتوي على معادلة <f>
+    final formulaEl = _firstElement(sumCell, 'f');
+    if (formulaEl == null) continue;
+
+    double total = 0;
+    bool hasAnyGrade = false;
+
+    for (int offset = 0; offset < 4; offset++) {
+      final gradeVal = _getValueAt(
+        targetRows,
+        baseCol + offset,
+        rowIndex,
+        targetSharedStrings,
+      );
+      if (gradeVal != null) {
+        final parsed = gradeVal is num
+            ? gradeVal
+            : num.tryParse(gradeVal.toString().trim());
+        if (parsed != null) {
+          total += parsed.toDouble();
+          hasAnyGrade = true;
+        }
+      }
+    }
+
+    if (hasAnyGrade) {
+      final formattedSum = total == total.roundToDouble()
+          ? total.toInt().toString()
+          : total.toString();
+
+      final existingV = _firstElement(sumCell, 'v');
+      if (existingV != null) {
+        existingV.children.clear();
+        existingV.children.add(XmlText(formattedSum));
+      } else {
+        sumCell.children.add(
+          XmlElement(
+            XmlName('v'),
+            [],
+            [XmlText(formattedSum)],
+          ),
+        );
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // إعادة بناء أرشيف XLSX بشكل نظيف يمنع رسالة الاسترداد والقراءة فقط
 // ═══════════════════════════════════════════════════════════
 
@@ -614,6 +676,26 @@ Uint8List _rebuildCleanXlsxArchive(
 
     if (entryPath == normalizedUpdatedPath) {
       final bytes = utf8.encode(updatedSheetXmlString);
+      cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      continue;
+    }
+
+    if (entryPath == 'xl/workbook.xml') {
+      String rawXml = utf8.decode(file.content as List<int>);
+      if (rawXml.contains('<calcPr')) {
+        if (rawXml.contains('fullCalcOnLoad=')) {
+          rawXml = rawXml.replaceAll(
+            RegExp(r'fullCalcOnLoad="[^"]*"'),
+            'fullCalcOnLoad="1"',
+          );
+        } else {
+          rawXml = rawXml.replaceFirst(
+            '<calcPr',
+            '<calcPr fullCalcOnLoad="1"',
+          );
+        }
+      }
+      final bytes = utf8.encode(rawXml);
       cleanArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
       continue;
     }
@@ -849,6 +931,13 @@ Map<String, dynamic> _fetchGradesIsolate(Map<String, dynamic> args) {
           targetGradeCol,
           r,
           grade,
+        );
+
+        // تحديث القيمة المحسوبة المخزنة لدالة المجموع في الصف مع الحفاظ على المعادلة
+        _updateRowSumCachedValues(
+          targetRows,
+          r,
+          targetSharedStrings,
         );
 
         updatedCount++;
